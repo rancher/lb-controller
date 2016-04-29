@@ -1,0 +1,2 @@
+FROM rancher-ingress:master
+COPY . /go/src/github.com/rancher/rancher-ingress/
