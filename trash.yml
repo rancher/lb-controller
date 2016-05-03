@@ -116,8 +116,7 @@ import:
   version: 0991ac528ea24aae194e45d6dcf01896cb42cbea
 
 - package: k8s.io/kubernetes/pkg
-  version: 9cc1ee01fd101e023330fa5b6d063397918abd2f
-
+  version: fd557a2c9f47c655f9c07d9cf9dee2539e935703
 
 - package: k8s.io/kubernetes/third_party/forked/json
   version: 9cc1ee01fd101e023330fa5b6d063397918abd2f
@@ -130,4 +129,3 @@ import:
 
 - package: speter.net/go/exp/math/dec/inf
   version: 42ca6cd68aa922bc3f32f1e056e61b65945d9ad7
-
