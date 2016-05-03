@@ -49,8 +49,8 @@ func (cfg *haproxyConfig) write(lbConfig *lbconfig.LoadBalancerConfig) (err erro
 	if err != nil {
 		return err
 	}
-	//FIXME - add real content
 	conf := make(map[string]interface{})
+	conf["frontends"] = lbConfig.FrontendServices
 	err = t.Execute(w, conf)
 	return err
 }

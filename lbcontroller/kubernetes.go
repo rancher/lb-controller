@@ -20,6 +20,7 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
 	"os"
@@ -195,7 +196,13 @@ func (lbc *loadBalancerController) controllersInSync() bool {
 }
 
 func (lbc *loadBalancerController) sync(key string) {
-	lbProvider.ApplyConfig(lbc.GetLBConfig())
+	if !lbc.controllersInSync() {
+		lbc.syncQueue.Requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
+		return
+	}
+	if err := lbProvider.ApplyConfig(lbc.GetLBConfig()); err != nil {
+		glog.Errorf("Failed to apply lb config on provider: %v", err)
+	}
 }
 
 func (lbc *loadBalancerController) updateIngressStatus(key string) {
@@ -226,7 +233,10 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 	lbIPs := ing.Status.LoadBalancer.Ingress
 	if !lbc.isStatusIPDefined(lbIPs) {
-		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
+		glog.Infof("namespace is %v", ing.Namespace)
+		glog.Infof("name is %v", ing.Name)
+		glog.Infof("node ip is %v", lbc.podInfo.NodeIP)
+		glog.Infof("Updating ingress %v/%v with IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
 		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
 			IP: lbc.podInfo.NodeIP,
 		})
@@ -260,16 +270,118 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
 
 	lbProvider = provider
-	//FIXME - remove after testing
-	lbProvider.ApplyConfig(lbc.GetLBConfig())
 
 	<-lbc.stopCh
 	glog.Infof("shutting down kubernetes-ingress-controller")
 }
 
 func (lbc *loadBalancerController) GetLBConfig() *lbconfig.LoadBalancerConfig {
-	lbConfig := &lbconfig.LoadBalancerConfig{}
+	backends := []lbconfig.BackendService{}
+	ings := lbc.ingLister.Store.List()
+	if len(ings) == 0 {
+		return &lbconfig.LoadBalancerConfig{}
+	}
+	var namespaceName string
+	for _, ingIf := range ings {
+		ing := ingIf.(*extensions.Ingress)
+		namespaceName = ing.GetNamespace()
+		for _, rule := range ing.Spec.Rules {
+			glog.Infof("Processing ingress rule %v", rule)
+			// process http rules only
+			if rule.IngressRuleValue.HTTP == nil {
+				continue
+			}
+			for _, path := range rule.HTTP.Paths {
+				svcName := path.Backend.ServiceName
+				svcKey := fmt.Sprintf("%v/%v", ing.GetNamespace(), path.Backend.ServiceName)
+				svcObj, svcExists, err := lbc.svcLister.Store.GetByKey(svcKey)
+				if err != nil {
+					glog.Infof("error getting service %v from the cache: %v", svcKey, err)
+					continue
+				}
+
+				if !svcExists {
+					glog.Warningf("service %v does no exists", svcKey)
+					continue
+				}
+
+				svc := svcObj.(*api.Service)
+
+				for _, servicePort := range svc.Spec.Ports {
+					if servicePort.Port == path.Backend.ServicePort.IntValue() {
+						eps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
+						if len(eps) == 0 {
+							glog.Warningf("service %v does no have any active endpoints", svcKey)
+						}
+						backend := lbconfig.BackendService{
+							Name:      svcName,
+							Endpoints: eps,
+							Algorithm: "roundrobin",
+						}
+						backends = append(backends, backend)
+						break
+					}
+				}
+			}
+		}
+	}
+	//only one backend service is supported
+	frontEndServices := []lbconfig.FrontendService{}
+	frontEndService := lbconfig.FrontendService{
+		Name:            namespaceName + "_frontend",
+		Port:            80,
+		BackendServices: backends,
+	}
+	frontEndServices = append(frontEndServices, frontEndService)
+	lbConfig := &lbconfig.LoadBalancerConfig{
+		FrontendServices: frontEndServices,
+	}
 	return lbConfig
+}
+
+// getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
+func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []lbconfig.Endpoint {
+	glog.Infof("getting endpoints for service %v/%v and port %v", s.Namespace, s.Name, servicePort.String())
+	ep, err := lbc.endpLister.GetServiceEndpoints(s)
+	if err != nil {
+		glog.Warningf("unexpected error getting service endpoints: %v", err)
+		return []lbconfig.Endpoint{}
+	}
+	lbEndpoints := []lbconfig.Endpoint{}
+	for _, ss := range ep.Subsets {
+		for _, epPort := range ss.Ports {
+
+			if !reflect.DeepEqual(epPort.Protocol, proto) {
+				continue
+			}
+
+			var targetPort int
+			switch servicePort.Type {
+			case intstr.Int:
+				if epPort.Port == servicePort.IntValue() {
+					targetPort = epPort.Port
+				}
+			case intstr.String:
+				if epPort.Name == servicePort.StrVal {
+					targetPort = epPort.Port
+				}
+			}
+
+			if targetPort == 0 {
+				continue
+			}
+
+			for _, epAddress := range ss.Addresses {
+				lbEndpoint := lbconfig.Endpoint{
+					IP:   epAddress.IP,
+					Port: targetPort,
+				}
+				lbEndpoints = append(lbEndpoints, lbEndpoint)
+			}
+		}
+	}
+
+	return lbEndpoints
 }
 
 // Stop stops the loadbalancer controller.
@@ -309,7 +421,7 @@ func (lbc *loadBalancerController) removeFromIngress() {
 
 		lbIPs := ing.Status.LoadBalancer.Ingress
 		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs) {
-			glog.Infof("Updating loadbalancer %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
+			glog.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
 
 			for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
 				if lbStatus.IP == lbc.podInfo.NodeIP {
@@ -340,14 +452,43 @@ type podInfo struct {
 	NodeIP       string
 }
 
-// returns information about current pod
+// returns information about inress-controller pod
 func getPodDetails(kubeClient *client.Client) (*podInfo, error) {
 	podName := os.Getenv("POD_NAME")
 	ns := os.Getenv("POD_NAMESPACE")
+	pod, _ := kubeClient.Pods(ns).Get(podName)
+	if pod == nil {
+		return nil, fmt.Errorf("Unable to get POD information")
+	}
+
 	if err := waitPodRunning(kubeClient, ns, podName, time.Millisecond*200, time.Second*30); err != nil {
 		return nil, err
 	}
-	return nil, nil
+
+	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	var externalIP string
+	for _, address := range node.Status.Addresses {
+		if address.Type == api.NodeExternalIP {
+			if address.Address != "" {
+				externalIP = address.Address
+				break
+			}
+		}
+
+		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
+			externalIP = address.Address
+		}
+	}
+
+	return &podInfo{
+		PodName:      podName,
+		PodNamespace: ns,
+		NodeIP:       externalIP,
+	}, nil
 }
 
 //waits for pod to reach a certain condition

@@ -12,3 +12,6 @@ if [[ -z "$DIRTY" && -n "$TAG" ]]; then
 else
     VERSION="${COMMIT}${DIRTY}"
 fi
+
+#FIXME - remove once testing is done
+VERSION="dev"

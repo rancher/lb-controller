@@ -15,7 +15,7 @@ spec:
         name: rancher-ingress-lb
     spec:
       containers:
-      - image: rancher/rancher-ingress:79e3c56-dirty
+      - image: rancher/rancher-ingress:dev
         name: rancher-ingress-lb
         # use downward API
         env:
