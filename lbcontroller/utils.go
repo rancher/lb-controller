@@ -1,4 +1,4 @@
-package utils
+package lbcontroller
 
 import (
 	"github.com/golang/glog"
@@ -33,7 +33,7 @@ func (t *TaskQueue) Run(period time.Duration, stopCh <-chan struct{}) {
 	wait.Until(t.worker, period, stopCh)
 }
 
-// enqueue enqueues ns/name of the given api object in the task queue.
+// Enqueue enqueues ns/name of the given api object in the task queue.
 func (t *TaskQueue) Enqueue(obj interface{}) {
 	key, err := keyFunc(obj)
 	if err != nil {
@@ -62,7 +62,7 @@ func (t *TaskQueue) worker() {
 	}
 }
 
-// shutdown shuts down the work queue and waits for the worker to ACK
+// Shutdown shuts down the work queue and waits for the worker to ACK
 func (t *TaskQueue) Shutdown() {
 	t.queue.ShutDown()
 	<-t.workerDone

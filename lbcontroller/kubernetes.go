@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-
-	"github.com/rancher/rancher-ingress/utils"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
@@ -67,21 +65,17 @@ type loadBalancerController struct {
 	ingController  *framework.Controller
 	endpController *framework.Controller
 	svcController  *framework.Controller
-	ingLister      utils.StoreToIngressLister
+	ingLister      StoreToIngressLister
 	svcLister      cache.StoreToServiceLister
 	endpLister     cache.StoreToEndpointsLister
 	recorder       record.EventRecorder
-	syncQueue      *utils.TaskQueue
-	ingQueue       *utils.TaskQueue
+	syncQueue      *TaskQueue
+	ingQueue       *TaskQueue
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
 	podInfo        *podInfo
 }
-
-var (
-	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
-)
 
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string, runtimeInfo *podInfo) (*loadBalancerController, error) {
 	eventBroadcaster := record.NewBroadcaster()
@@ -94,8 +88,8 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
 	}
 
-	lbc.syncQueue = utils.NewTaskQueue(lbc.sync)
-	lbc.ingQueue = utils.NewTaskQueue(lbc.updateIngressStatus)
+	lbc.syncQueue = NewTaskQueue(lbc.sync)
+	lbc.ingQueue = NewTaskQueue(lbc.updateIngressStatus)
 
 	ingEventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -276,7 +270,7 @@ func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIn
 
 // Starts a load balancer controller
 func (lbc *loadBalancerController) Run() {
-	glog.Infof("starting rancher-ingress-controller")
+	glog.Infof("starting kubernetes-ingress-controller")
 
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
@@ -286,7 +280,7 @@ func (lbc *loadBalancerController) Run() {
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
 
 	<-lbc.stopCh
-	glog.Infof("shutting down rancher-ingress-controller")
+	glog.Infof("shutting down kubernetes-ingress-controller")
 }
 
 // Stop stops the loadbalancer controller.
