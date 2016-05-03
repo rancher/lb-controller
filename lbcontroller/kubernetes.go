@@ -1,4 +1,4 @@
-package main
+package lbcontroller
 
 import (
 	"fmt"
@@ -8,27 +8,71 @@ import (
 
 	"github.com/golang/glog"
 
+	"github.com/rancher/rancher-ingress/utils"
+	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
+	"os"
 )
+
+var (
+	flags        = pflag.NewFlagSet("", pflag.ExitOnError)
+	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
+		`Relist and confirm cloud resources this often.`)
+
+	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,
+		`Namespace to watch for Ingress. Default is to watch all namespaces`)
+)
+
+func init() {
+	var server string
+	if server = os.Getenv("KUBERNETES_SERVER"); len(server) == 0 {
+		glog.Info("KUBERNETES_SERVER is not set, skipping init of kubernetes controller")
+		return
+	}
+	config := &restclient.Config{
+		Host:          server,
+		ContentConfig: restclient.ContentConfig{GroupVersion: &unversioned.GroupVersion{Version: "v1"}},
+	}
+	kubeClient, err := client.New(config)
+
+	if err != nil {
+		glog.Fatalf("failed to create kubernetes client: %v", err)
+	}
+
+	runtimePodInfo, err := getPodDetails(kubeClient)
+	if err != nil {
+		glog.Errorf("Failed to fetch pod info for %v %v ", runtimePodInfo, err)
+	}
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *watchNamespace, runtimePodInfo)
+	if err != nil {
+		glog.Fatalf("%v", err)
+	}
+
+	RegisterController(lbc.GetName(), lbc)
+}
 
 type loadBalancerController struct {
 	client         *client.Client
 	ingController  *framework.Controller
 	endpController *framework.Controller
 	svcController  *framework.Controller
-	ingLister      StoreToIngressLister
+	ingLister      utils.StoreToIngressLister
 	svcLister      cache.StoreToServiceLister
 	endpLister     cache.StoreToEndpointsLister
 	recorder       record.EventRecorder
-	syncQueue      *TaskQueue
-	ingQueue       *TaskQueue
+	syncQueue      *utils.TaskQueue
+	ingQueue       *utils.TaskQueue
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
@@ -50,41 +94,41 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
 	}
 
-	lbc.syncQueue = NewTaskQueue(lbc.sync)
-	lbc.ingQueue = NewTaskQueue(lbc.updateIngressStatus)
+	lbc.syncQueue = utils.NewTaskQueue(lbc.sync)
+	lbc.ingQueue = utils.NewTaskQueue(lbc.updateIngressStatus)
 
 	ingEventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(addIng, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
-			lbc.ingQueue.enqueue(obj)
-			lbc.syncQueue.enqueue(obj)
+			lbc.ingQueue.Enqueue(obj)
+			lbc.syncQueue.Enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
 			upIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-			lbc.syncQueue.enqueue(obj)
+			lbc.syncQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
 				upIng := cur.(*extensions.Ingress)
 				lbc.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-				lbc.ingQueue.enqueue(cur)
-				lbc.syncQueue.enqueue(cur)
+				lbc.ingQueue.Enqueue(cur)
+				lbc.syncQueue.Enqueue(cur)
 			}
 		},
 	}
 
 	eventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			lbc.syncQueue.enqueue(obj)
+			lbc.syncQueue.Enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
-			lbc.syncQueue.enqueue(obj)
+			lbc.syncQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				lbc.syncQueue.enqueue(cur)
+				lbc.syncQueue.Enqueue(cur)
 			}
 		},
 	}
@@ -181,13 +225,13 @@ func (lbc *loadBalancerController) sync(key string) {
 
 func (lbc *loadBalancerController) updateIngressStatus(key string) {
 	if !lbc.controllersInSync() {
-		lbc.ingQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
+		lbc.ingQueue.Requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
 		return
 	}
 
 	obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
 	if err != nil {
-		lbc.ingQueue.requeue(key, err)
+		lbc.ingQueue.Requeue(key, err)
 		return
 	}
 
@@ -238,8 +282,8 @@ func (lbc *loadBalancerController) Run() {
 	go lbc.endpController.Run(lbc.stopCh)
 	go lbc.svcController.Run(lbc.stopCh)
 
-	go lbc.syncQueue.run(time.Second, lbc.stopCh)
-	go lbc.ingQueue.run(time.Second, lbc.stopCh)
+	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
+	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
 
 	<-lbc.stopCh
 	glog.Infof("shutting down rancher-ingress-controller")
@@ -259,7 +303,7 @@ func (lbc *loadBalancerController) Stop() error {
 		close(lbc.stopCh)
 		glog.Infof("shutting down controller queues")
 		lbc.shutdown = true
-		lbc.syncQueue.shutdown()
+		lbc.syncQueue.Shutdown()
 
 		return nil
 	}
@@ -300,4 +344,56 @@ func (lbc *loadBalancerController) removeFromIngress() {
 			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbc.podInfo.NodeIP)
 		}
 	}
+}
+
+func (lbc *loadBalancerController) GetName() string {
+	return "kubernetes"
+}
+
+// podInfo contains runtime information about the pod
+type podInfo struct {
+	PodName      string
+	PodNamespace string
+	NodeIP       string
+}
+
+// returns information about current pod
+func getPodDetails(kubeClient *client.Client) (*podInfo, error) {
+	podName := os.Getenv("POD_NAME")
+	ns := os.Getenv("POD_NAMESPACE")
+	if err := waitPodRunning(kubeClient, ns, podName, time.Millisecond*200, time.Second*30); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+//waits for pod to reach a certain condition
+func waitPodRunning(kubeClient *client.Client, ns string, podName string, interval, timeout time.Duration) error {
+	condition := func(pod *api.Pod) bool {
+		if pod.Status.Phase == api.PodRunning {
+			return true
+		}
+		return false
+	}
+	return waitForPodCondition(kubeClient, ns, podName, condition, interval, timeout)
+}
+
+// waitForPodCondition waits for a pod in state defined by a condition func
+func waitForPodCondition(kubeClient *client.Client, ns, podName string, condition func(pod *api.Pod) bool,
+	interval, timeout time.Duration) error {
+	return wait.PollImmediate(interval, timeout, func() (bool, error) {
+		pod, err := kubeClient.Pods(ns).Get(podName)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				glog.Info("pod % v not found in namespace %v", podName, ns)
+				return false, nil
+			}
+		}
+		done := condition(pod)
+		if done {
+			return true, nil
+		}
+
+		return false, nil
+	})
 }
