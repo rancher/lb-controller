@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/golang/glog"
 	"github.com/rancher/rancher-ingress/lbcontroller"
+	"github.com/rancher/rancher-ingress/lbprovider"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,23 +15,24 @@ var (
 	lbProviderName   = flag.String("lb-provider", "haproxy", "Lb controller name")
 
 	lbc lbcontroller.LBController
+	lbp lbprovider.LBProvider
 )
 
 func setEnv() {
 	flag.Parse()
 	lbc = lbcontroller.GetController(*lbControllerName)
+	lbp = lbprovider.GetProvider(*lbProviderName)
 }
 
 func main() {
 	glog.Infof("Starting Rancher LB service")
 	setEnv()
 	glog.Infof("LB controller: %s", lbc.GetName())
-
-	lbc.Run()
+	glog.Infof("LB provider: %s", lbp.GetName())
 
 	go handleSigterm(lbc)
 
-	lbc.Run()
+	lbc.Run(lbp)
 }
 
 func handleSigterm(lbc lbcontroller.LBController) {

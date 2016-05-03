@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/rancher/rancher-ingress/lbprovider"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
@@ -269,15 +270,17 @@ func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIn
 }
 
 // Starts a load balancer controller
-func (lbc *loadBalancerController) Run() {
+func (lbc *loadBalancerController) Run(lbProvider lbprovider.LBProvider) {
 	glog.Infof("starting kubernetes-ingress-controller")
-
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
 	go lbc.svcController.Run(lbc.stopCh)
 
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
+
+	//FIXME - remove after testing
+	lbProvider.ApplyConfig()
 
 	<-lbc.stopCh
 	glog.Infof("shutting down kubernetes-ingress-controller")

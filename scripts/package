@@ -10,6 +10,8 @@ TAG=${TAG:-${VERSION}}
 REPO=${REPO:-rancher}
 
 cp ../bin/rancher-ingress .
+cp ../lbprovider/{haproxy_reload,haproxy_template.cfg} .
+
 docker build -t ${REPO}/rancher-ingress:${TAG} .
 
 echo Built ${REPO}/rancher-ingress:${TAG}
