@@ -3,6 +3,7 @@ package lbprovider
 import (
 	"fmt"
 	"github.com/golang/glog"
+	"github.com/rancher/rancher-ingress/lbconfig"
 	"io"
 	"os"
 	"os/exec"
@@ -15,29 +16,29 @@ func init() {
 		glog.Info("HAPROXY_CONFIG is not set, skipping init of haproxy provider")
 		return
 	}
-	lbConfig := &loadBalancerConfig{
+	haproxyCfg := &haproxyConfig{
 		ReloadCmd: "haproxy_reload",
 		Config:    config,
 		Template:  "/etc/haproxy/haproxy_template.cfg",
 	}
 	lbp := HAProxyProvider{
-		cfg: lbConfig,
+		cfg: haproxyCfg,
 	}
 	RegisterProvider(lbp.GetName(), &lbp)
 }
 
 type HAProxyProvider struct {
-	cfg *loadBalancerConfig
+	cfg *haproxyConfig
 }
 
-type loadBalancerConfig struct {
+type haproxyConfig struct {
 	Name      string
 	ReloadCmd string
 	Config    string
 	Template  string
 }
 
-func (cfg *loadBalancerConfig) write() (err error) {
+func (cfg *haproxyConfig) write(lbConfig *lbconfig.LoadBalancerConfig) (err error) {
 	var w io.Writer
 	w, err = os.Create(cfg.Config)
 	if err != nil {
@@ -54,8 +55,8 @@ func (cfg *loadBalancerConfig) write() (err error) {
 	return err
 }
 
-func (lbc *HAProxyProvider) ApplyConfig() error {
-	if err := lbc.cfg.write(); err != nil {
+func (lbc *HAProxyProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+	if err := lbc.cfg.write(lbConfig); err != nil {
 		return err
 	}
 	return lbc.cfg.reload()
@@ -65,7 +66,7 @@ func (lbc *HAProxyProvider) GetName() string {
 	return "haproxy"
 }
 
-func (cfg *loadBalancerConfig) reload() error {
+func (cfg *haproxyConfig) reload() error {
 	output, err := exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	if err != nil {

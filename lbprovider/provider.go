@@ -2,10 +2,11 @@ package lbprovider
 
 import (
 	"fmt"
+	"github.com/rancher/rancher-ingress/lbconfig"
 )
 
 type LBProvider interface {
-	ApplyConfig() error
+	ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error
 	GetName() string
 }
 

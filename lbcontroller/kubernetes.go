@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/rancher/rancher-ingress/lbconfig"
 	"github.com/rancher/rancher-ingress/lbprovider"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
@@ -31,6 +32,7 @@ var (
 
 	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,
 		`Namespace to watch for Ingress. Default is to watch all namespaces`)
+	lbProvider lbprovider.LBProvider
 )
 
 func init() {
@@ -193,29 +195,7 @@ func (lbc *loadBalancerController) controllersInSync() bool {
 }
 
 func (lbc *loadBalancerController) sync(key string) {
-	/*if !lbc.controllersInSync() {
-	      lbc.syncQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
-	      return
-	  }
-
-	  ings := lbc.ingLister.Store.List()
-	  upstreams, servers := lbc.getUpstreamServers(ings)
-
-	  var cfg *api.ConfigMap
-
-	  ns, name, _ := parseNsName(lbc.nxgConfigMap)
-	  cfg, err := lbc.getConfigMap(ns, name)
-	  if err != nil {
-	      cfg = &api.ConfigMap{}
-	  }
-
-	  ngxConfig := lbc.nginx.ReadConfig(cfg)
-	  lbc.nginx.CheckAndReload(ngxConfig, nginx.IngressConfig{
-	      Upstreams:    upstreams,
-	      Servers:      servers,
-	      TCPUpstreams: lbc.getTCPServices(),
-	      UDPUpstreams: lbc.getUDPServices(),
-	  })*/
+	lbProvider.ApplyConfig(lbc.GetLBConfig())
 }
 
 func (lbc *loadBalancerController) updateIngressStatus(key string) {
@@ -270,7 +250,7 @@ func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIn
 }
 
 // Starts a load balancer controller
-func (lbc *loadBalancerController) Run(lbProvider lbprovider.LBProvider) {
+func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 	glog.Infof("starting kubernetes-ingress-controller")
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
@@ -279,11 +259,17 @@ func (lbc *loadBalancerController) Run(lbProvider lbprovider.LBProvider) {
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
 
+	lbProvider = provider
 	//FIXME - remove after testing
-	lbProvider.ApplyConfig()
+	lbProvider.ApplyConfig(lbc.GetLBConfig())
 
 	<-lbc.stopCh
 	glog.Infof("shutting down kubernetes-ingress-controller")
+}
+
+func (lbc *loadBalancerController) GetLBConfig() *lbconfig.LoadBalancerConfig {
+	lbConfig := &lbconfig.LoadBalancerConfig{}
+	return lbConfig
 }
 
 // Stop stops the loadbalancer controller.

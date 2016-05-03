@@ -2,6 +2,7 @@ package lbcontroller
 
 import (
 	"fmt"
+	"github.com/rancher/rancher-ingress/lbconfig"
 	"github.com/rancher/rancher-ingress/lbprovider"
 )
 
@@ -9,7 +10,7 @@ type LBController interface {
 	GetName() string
 	Run(lbProvider lbprovider.LBProvider)
 	Stop() error
-	//GetLBConfig() interface{}
+	GetLBConfig() *lbconfig.LoadBalancerConfig
 }
 
 var (
