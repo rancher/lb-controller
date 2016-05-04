@@ -1,6 +1,9 @@
 FROM ubuntu:15.10
 
 RUN apt-get update && apt-get install -y \
+    curl \
+    vim-tiny \
+    iputils-ping \
     software-properties-common && \
     add-apt-repository ppa:vbernat/haproxy-1.6 && \
     apt-get update && apt-get install -y haproxy

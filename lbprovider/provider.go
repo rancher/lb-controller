@@ -5,9 +5,12 @@ import (
 	"github.com/rancher/rancher-ingress/lbconfig"
 )
 
+const Localhost = "localhost"
+
 type LBProvider interface {
-	ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error
+	ApplyConfig(lbName string, lbConfig *lbconfig.LoadBalancerConfig) error
 	GetName() string
+	GetPublicEndpoint(lbName string) string
 }
 
 var (

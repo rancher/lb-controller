@@ -55,7 +55,7 @@ func (cfg *haproxyConfig) write(lbConfig *lbconfig.LoadBalancerConfig) (err erro
 	return err
 }
 
-func (lbc *HAProxyProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbc *HAProxyProvider) ApplyConfig(lbName string, lbConfig *lbconfig.LoadBalancerConfig) error {
 	if err := lbc.cfg.write(lbConfig); err != nil {
 		return err
 	}
@@ -66,12 +66,16 @@ func (lbc *HAProxyProvider) GetName() string {
 	return "haproxy"
 }
 
+func (lbc *HAProxyProvider) GetPublicEndpoint(lbName string) string {
+	return Localhost
+}
+
 func (cfg *haproxyConfig) reload() error {
 	output, err := exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	if err != nil {
 		return fmt.Errorf("error restarting %v: %v", msg, err)
 	}
-	glog.Infof(msg)
+	glog.Debugf(msg)
 	return nil
 }

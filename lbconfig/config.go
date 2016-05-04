@@ -1,12 +1,11 @@
 package lbconfig
 
 type BackendService struct {
-	Name         string
-	Endpoints    []Endpoint
-	Path         string
-	Host         string
-	Algorithm    string
-	FrontendPort int
+	Name      string
+	Endpoints []Endpoint
+	Path      string
+	Host      string
+	Algorithm string
 }
 
 type Endpoint struct {
