@@ -129,3 +129,9 @@ import:
 
 - package: speter.net/go/exp/math/dec/inf
   version: 42ca6cd68aa922bc3f32f1e056e61b65945d9ad7
+
+- package: github.com/rancher/go-rancher/client
+  version: 80f15a052d778601e047286669edda02e83383cc
+
+- package: github.com/gorilla/websocket
+  version: 1551221275a7bd42978745a376b2531f791d88f3

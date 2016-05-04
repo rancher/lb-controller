@@ -249,9 +249,9 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 func (lbc *loadBalancerController) getPublicEndpoint(key string) string {
 	providerEP := lbProvider.GetPublicEndpoint(key)
-	if providerEP == lbprovider.Localhost {
-		return lbc.podInfo.NodeIP
-	}
+	// if providerEP == lbprovider.Localhost {
+	// 	return lbc.podInfo.NodeIP
+	// }
 	return providerEP
 }
 
