@@ -317,6 +317,8 @@ func (lbc *loadBalancerController) GetLBConfig() *lbconfig.LoadBalancerConfig {
 							Name:      svcName,
 							Endpoints: eps,
 							Algorithm: "roundrobin",
+							Path:      path.Path,
+							Host:      rule.Host,
 						}
 						backends = append(backends, backend)
 						break
