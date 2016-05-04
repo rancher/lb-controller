@@ -76,6 +76,5 @@ func (cfg *haproxyConfig) reload() error {
 	if err != nil {
 		return fmt.Errorf("error restarting %v: %v", msg, err)
 	}
-	glog.Debugf(msg)
 	return nil
 }
