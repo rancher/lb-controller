@@ -67,6 +67,7 @@ type loadBalancerController struct {
 	recorder       record.EventRecorder
 	syncQueue      *TaskQueue
 	ingQueue       *TaskQueue
+	cleanupQueue   *TaskQueue
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
@@ -84,6 +85,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 
 	lbc.syncQueue = NewTaskQueue(lbc.sync)
 	lbc.ingQueue = NewTaskQueue(lbc.updateIngressStatus)
+	lbc.cleanupQueue = NewTaskQueue(lbc.cleanupLB)
 
 	ingEventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -96,6 +98,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			upIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
 			lbc.syncQueue.Enqueue(obj)
+			lbc.cleanupQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
@@ -143,6 +146,13 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		&api.Service{}, resyncPeriod, framework.ResourceEventHandlerFuncs{})
 
 	return &lbc, nil
+}
+
+func (lbc *loadBalancerController) cleanupLB(key string) {
+	if err := lbProvider.CleanupLB(key); err != nil {
+		lbc.syncQueue.Requeue(key, fmt.Errorf("Failed to cleanup lb [%s]", key))
+		return
+	}
 }
 
 func ingressListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
@@ -264,6 +274,7 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
+	go lbc.cleanupQueue.Run(time.Second, lbc.stopCh)
 
 	lbProvider = provider
 

@@ -2,7 +2,6 @@ package lbprovider
 
 import (
 	"fmt"
-	"github.com/golang/glog"
 	"github.com/rancher/rancher-ingress/lbconfig"
 	"io"
 	"os"
@@ -11,20 +10,20 @@ import (
 )
 
 func init() {
-	var config string
-	if config = os.Getenv("HAPROXY_CONFIG"); len(config) == 0 {
-		glog.Info("HAPROXY_CONFIG is not set, skipping init of haproxy provider")
-		return
-	}
-	haproxyCfg := &haproxyConfig{
-		ReloadCmd: "haproxy_reload",
-		Config:    config,
-		Template:  "/etc/haproxy/haproxy_template.cfg",
-	}
-	lbp := HAProxyProvider{
-		cfg: haproxyCfg,
-	}
-	RegisterProvider(lbp.GetName(), &lbp)
+	// var config string
+	// if config = os.Getenv("HAPROXY_CONFIG"); len(config) == 0 {
+	// 	glog.Info("HAPROXY_CONFIG is not set, skipping init of haproxy provider")
+	// 	return
+	// }
+	// haproxyCfg := &haproxyConfig{
+	// 	ReloadCmd: "haproxy_reload",
+	// 	Config:    config,
+	// 	Template:  "/etc/haproxy/haproxy_template.cfg",
+	// }
+	// lbp := HAProxyProvider{
+	// 	cfg: haproxyCfg,
+	// }
+	// RegisterProvider(lbp.GetName(), &lbp)
 }
 
 type HAProxyProvider struct {

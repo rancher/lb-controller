@@ -11,6 +11,7 @@ type LBProvider interface {
 	ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error
 	GetName() string
 	GetPublicEndpoint(lbName string) string
+	CleanupLB(lbName string) error
 }
 
 var (

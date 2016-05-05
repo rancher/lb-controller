@@ -72,6 +72,29 @@ func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 	return lbc.setServiceLinks(lb, lbConfig)
 }
 
+func (lbc *RancherLBProvider) CleanupLB(name string) error {
+	fmtName := lbc.formatLBName(name)
+	glog.Infof("Deleting lb service [%s]", fmtName)
+
+	return lbc.deleteLBService(fmtName)
+}
+
+func (lbc *RancherLBProvider) deleteLBService(name string) error {
+	stack, err := lbc.getStack(lbStackName)
+	if err != nil {
+		return err
+	}
+	if stack == nil {
+		glog.Infof("System LB stack [%s] doesn't exist, no need to cleanup LB ", lbStackName)
+	}
+	lb, err := lbc.getLBServiceByName(name)
+	if err != nil {
+		return err
+	}
+	_, err = lbc.client.LoadBalancerService.ActionRemove(lb)
+	return err
+}
+
 func (lbc *RancherLBProvider) formatLBName(name string) string {
 	return strings.Replace(name, "/", "-", -1)
 }
@@ -159,7 +182,7 @@ func (lbc *RancherLBProvider) getStack(name string) (*client.Environment, error)
 	if len(envs.Data) >= 1 {
 		return &envs.Data[0], nil
 	}
-	return nil, fmt.Errorf("Coudln't get stack by name [%s]", name)
+	return nil, nil
 }
 
 func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancerService, error) {
@@ -217,7 +240,6 @@ func (lbc *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lb
 	}
 	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
 
-	glog.Infof("Nubmer of backends is  %v", len(lbConfig.FrontendServices[0].BackendServices))
 	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
 		svc, err := lbc.getKubernetesServiceByName(bcknd.Name, lbConfig.Namespace)
 		if err != nil {
@@ -237,7 +259,6 @@ func (lbc *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lb
 		} else if bcknd.Path != "" {
 			port = fmt.Sprintf("%s=%s", bcknd.Path, bckndPort)
 		}
-		glog.Infof("Port is  %v", port)
 		ports = append(ports, port)
 
 		link := &client.LoadBalancerServiceLink{
@@ -326,6 +347,10 @@ func (lbc *RancherLBProvider) getKubernetesServiceByName(name string, stackName 
 	stack, err := lbc.getStack(stackName)
 	if err != nil {
 		return nil, err
+	}
+
+	if stack == nil {
+		return nil, fmt.Errorf("Coudln't get stack by name [%s]", stackName)
 	}
 
 	opts := client.NewListOpts()
