@@ -1,16 +1,7 @@
-FROM ubuntu:15.10
+FROM alpine:3.2
+MAINTAINER Rancher Labs, Inc.
+RUN apk add --update ca-certificates 
 
-RUN apt-get update && apt-get install -y \
-    curl \
-    vim-tiny \
-    iputils-ping \
-    software-properties-common && \
-    add-apt-repository ppa:vbernat/haproxy-1.6 && \
-    apt-get update && apt-get install -y haproxy
-
-RUN mkdir -p /etc/haproxy/
 COPY rancher-ingress /usr/bin/
-COPY haproxy_reload /usr/bin/
-COPY haproxy_template.cfg /etc/haproxy/haproxy_template.cfg
 
 CMD ["rancher-ingress"]

@@ -20,5 +20,6 @@ type FrontendService struct {
 }
 
 type LoadBalancerConfig struct {
+	Name             string
 	FrontendServices []FrontendService
 }

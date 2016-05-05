@@ -21,7 +21,13 @@ var (
 func setEnv() {
 	flag.Parse()
 	lbc = lbcontroller.GetController(*lbControllerName)
+	if lbc == nil {
+		glog.Fatalf("Unable to find controller by name %s", *lbControllerName)
+	}
 	lbp = lbprovider.GetProvider(*lbProviderName)
+	if lbp == nil {
+		glog.Fatalf("Unable to find provider by name %s", *lbProviderName)
+	}
 }
 
 func main() {

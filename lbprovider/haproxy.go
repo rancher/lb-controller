@@ -55,7 +55,7 @@ func (cfg *haproxyConfig) write(lbConfig *lbconfig.LoadBalancerConfig) (err erro
 	return err
 }
 
-func (lbc *HAProxyProvider) ApplyConfig(lbName string, lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbc *HAProxyProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
 	if err := lbc.cfg.write(lbConfig); err != nil {
 		return err
 	}

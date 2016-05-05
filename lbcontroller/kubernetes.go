@@ -11,7 +11,6 @@ import (
 	"github.com/rancher/rancher-ingress/lbprovider"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -21,7 +20,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
 	"os"
 )
@@ -31,8 +29,6 @@ var (
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
 
-	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,
-		`Namespace to watch for Ingress. Default is to watch all namespaces`)
 	lbProvider lbprovider.LBProvider
 )
 
@@ -52,11 +48,7 @@ func init() {
 		glog.Fatalf("failed to create kubernetes client: %v", err)
 	}
 
-	runtimePodInfo, err := getPodDetails(kubeClient)
-	if err != nil {
-		glog.Errorf("Failed to fetch pod info for %v %v ", runtimePodInfo, err)
-	}
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *watchNamespace, runtimePodInfo)
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, api.NamespaceAll)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
@@ -78,17 +70,15 @@ type loadBalancerController struct {
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
-	podInfo        *podInfo
 }
 
-func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string, runtimeInfo *podInfo) (*loadBalancerController, error) {
+func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string) (*loadBalancerController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(""))
 	lbc := loadBalancerController{
 		client:   kubeClient,
 		stopCh:   make(chan struct{}),
-		podInfo:  runtimeInfo,
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
 	}
 
@@ -200,8 +190,10 @@ func (lbc *loadBalancerController) sync(key string) {
 		lbc.syncQueue.Requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
 		return
 	}
-	if err := lbProvider.ApplyConfig(key, lbc.GetLBConfig()); err != nil {
-		glog.Errorf("Failed to apply lb config on provider: %v", err)
+	for _, cfg := range lbc.GetLBConfigs() {
+		if err := lbProvider.ApplyConfig(cfg); err != nil {
+			glog.Errorf("Failed to apply lb config on provider: %v", err)
+		}
 	}
 }
 
@@ -249,9 +241,6 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 func (lbc *loadBalancerController) getPublicEndpoint(key string) string {
 	providerEP := lbProvider.GetPublicEndpoint(key)
-	// if providerEP == lbprovider.Localhost {
-	// 	return lbc.podInfo.NodeIP
-	// }
 	return providerEP
 }
 
@@ -282,16 +271,15 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 	glog.Infof("shutting down kubernetes-ingress-controller")
 }
 
-func (lbc *loadBalancerController) GetLBConfig() *lbconfig.LoadBalancerConfig {
+func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig {
 	backends := []lbconfig.BackendService{}
 	ings := lbc.ingLister.Store.List()
+	lbConfigs := []*lbconfig.LoadBalancerConfig{}
 	if len(ings) == 0 {
-		return &lbconfig.LoadBalancerConfig{}
+		return lbConfigs
 	}
-	var namespaceName string
 	for _, ingIf := range ings {
 		ing := ingIf.(*extensions.Ingress)
-		namespaceName = ing.GetNamespace()
 		for _, rule := range ing.Spec.Rules {
 			glog.Infof("Processing ingress rule %v", rule)
 			// process http rules only
@@ -333,19 +321,22 @@ func (lbc *loadBalancerController) GetLBConfig() *lbconfig.LoadBalancerConfig {
 				}
 			}
 		}
+		//only one frontend service is supported
+		frontEndServices := []lbconfig.FrontendService{}
+		frontEndService := lbconfig.FrontendService{
+			Name:            ing.Name,
+			Port:            80,
+			BackendServices: backends,
+		}
+		frontEndServices = append(frontEndServices, frontEndService)
+		lbConfig := &lbconfig.LoadBalancerConfig{
+			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
+			FrontendServices: frontEndServices,
+		}
+		lbConfigs = append(lbConfigs, lbConfig)
 	}
-	//only one backend service is supported
-	frontEndServices := []lbconfig.FrontendService{}
-	frontEndService := lbconfig.FrontendService{
-		Name:            namespaceName + "_frontend",
-		Port:            80,
-		BackendServices: backends,
-	}
-	frontEndServices = append(frontEndServices, frontEndService)
-	lbConfig := &lbconfig.LoadBalancerConfig{
-		FrontendServices: frontEndServices,
-	}
-	return lbConfig
+
+	return lbConfigs
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -453,81 +444,4 @@ func (lbc *loadBalancerController) removeFromIngress() {
 
 func (lbc *loadBalancerController) GetName() string {
 	return "kubernetes"
-}
-
-// podInfo contains runtime information about the pod
-type podInfo struct {
-	PodName      string
-	PodNamespace string
-	NodeIP       string
-}
-
-// returns information about inress-controller pod
-func getPodDetails(kubeClient *client.Client) (*podInfo, error) {
-	podName := os.Getenv("POD_NAME")
-	ns := os.Getenv("POD_NAMESPACE")
-	pod, _ := kubeClient.Pods(ns).Get(podName)
-	if pod == nil {
-		return nil, fmt.Errorf("Unable to get POD information")
-	}
-
-	if err := waitPodRunning(kubeClient, ns, podName, time.Millisecond*200, time.Second*30); err != nil {
-		return nil, err
-	}
-
-	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
-	if err != nil {
-		return nil, err
-	}
-
-	var externalIP string
-	for _, address := range node.Status.Addresses {
-		if address.Type == api.NodeExternalIP {
-			if address.Address != "" {
-				externalIP = address.Address
-				break
-			}
-		}
-
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
-			externalIP = address.Address
-		}
-	}
-
-	return &podInfo{
-		PodName:      podName,
-		PodNamespace: ns,
-		NodeIP:       externalIP,
-	}, nil
-}
-
-//waits for pod to reach a certain condition
-func waitPodRunning(kubeClient *client.Client, ns string, podName string, interval, timeout time.Duration) error {
-	condition := func(pod *api.Pod) bool {
-		if pod.Status.Phase == api.PodRunning {
-			return true
-		}
-		return false
-	}
-	return waitForPodCondition(kubeClient, ns, podName, condition, interval, timeout)
-}
-
-// waitForPodCondition waits for a pod in state defined by a condition func
-func waitForPodCondition(kubeClient *client.Client, ns, podName string, condition func(pod *api.Pod) bool,
-	interval, timeout time.Duration) error {
-	return wait.PollImmediate(interval, timeout, func() (bool, error) {
-		pod, err := kubeClient.Pods(ns).Get(podName)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				glog.Info("pod % v not found in namespace %v", podName, ns)
-				return false, nil
-			}
-		}
-		done := condition(pod)
-		if done {
-			return true, nil
-		}
-
-		return false, nil
-	})
 }

@@ -8,7 +8,7 @@ import (
 const Localhost = "localhost"
 
 type LBProvider interface {
-	ApplyConfig(lbName string, lbConfig *lbconfig.LoadBalancerConfig) error
+	ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error
 	GetName() string
 	GetPublicEndpoint(lbName string) string
 }
