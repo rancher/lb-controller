@@ -6,6 +6,7 @@ type BackendService struct {
 	Path      string
 	Host      string
 	Algorithm string
+	Port      int
 }
 
 type Endpoint struct {
@@ -21,5 +22,6 @@ type FrontendService struct {
 
 type LoadBalancerConfig struct {
 	Name             string
+	Namespace        string
 	FrontendServices []FrontendService
 }

@@ -306,7 +306,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 					if servicePort.Port == path.Backend.ServicePort.IntValue() {
 						eps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
 						if len(eps) == 0 {
-							glog.Warningf("service %v does no have any active endpoints", svcKey)
+							continue
 						}
 						backend := lbconfig.BackendService{
 							Name:      svcName,
@@ -314,6 +314,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 							Algorithm: "roundrobin",
 							Path:      path.Path,
 							Host:      rule.Host,
+							Port:      eps[0].Port,
 						}
 						backends = append(backends, backend)
 						break
@@ -321,7 +322,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 				}
 			}
 		}
-		//only one frontend service is supported
+		//FIXME - add second frontend service for https port
 		frontEndServices := []lbconfig.FrontendService{}
 		frontEndService := lbconfig.FrontendService{
 			Name:            ing.Name,
@@ -331,6 +332,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 		frontEndServices = append(frontEndServices, frontEndService)
 		lbConfig := &lbconfig.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
+			Namespace:        ing.GetNamespace(),
 			FrontendServices: frontEndServices,
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
@@ -420,7 +422,7 @@ func (lbc *loadBalancerController) removeFromIngress() {
 		}
 
 		lbIPs := ing.Status.LoadBalancer.Ingress
-		publicEndpoint := lbc.getPublicEndpoint(ing.Name)
+		publicEndpoint := lbc.getPublicEndpoint(fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name))
 		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs, publicEndpoint) {
 			glog.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, publicEndpoint)
 

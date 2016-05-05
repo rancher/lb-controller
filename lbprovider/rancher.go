@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-ingress/lbconfig"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,11 +64,12 @@ type RancherLBProvider struct {
 }
 
 func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
-	_, err := lbc.createLBService(lbc.formatLBName(lbConfig.Name))
+	lb, err := lbc.createLBService(lbc.formatLBName(lbConfig.Name))
 	if err != nil {
 		return err
 	}
-	return nil
+	glog.Infof("Setting service links for service [%s]", lb.Name)
+	return lbc.setServiceLinks(lb, lbConfig)
 }
 
 func (lbc *RancherLBProvider) formatLBName(name string) string {
@@ -81,10 +83,9 @@ func (lbc *RancherLBProvider) GetName() string {
 func (lbc *RancherLBProvider) GetPublicEndpoint(lbName string) string {
 	epStr := ""
 	lbFmt := lbc.formatLBName(lbName)
-	glog.Infof("Getting public endpoint for lb %s", lbFmt)
 	lb, err := lbc.createLBService(lbFmt)
 	if err != nil {
-		glog.Errorf("Failed to find lb service %s", lbFmt)
+		glog.Errorf("Failed to find lb service [%s] %v", lbFmt, err)
 		return epStr
 	}
 	eps := lb.PublicEndpoints
@@ -118,7 +119,7 @@ func convertObject(obj1 interface{}, obj2 interface{}) error {
 
 type waitCallback func(result chan<- interface{}) (bool, error)
 
-func (lbc *RancherLBProvider) getOrCreateStack() (*client.Environment, error) {
+func (lbc *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = lbStackName
 	opts.Filters["removed_null"] = "1"
@@ -140,13 +141,29 @@ func (lbc *RancherLBProvider) getOrCreateStack() (*client.Environment, error) {
 
 	env, err = lbc.client.Environment.Create(env)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't create stack onment for kubernetes LB ingress. Error: %#v", err)
+		return nil, fmt.Errorf("Couldn't create stack [%s] for kubernetes LB ingress. Error: %#v", lbStackName, err)
 	}
 	return env, nil
 }
 
+func (lbc *RancherLBProvider) getStack(name string) (*client.Environment, error) {
+	opts := client.NewListOpts()
+	opts.Filters["name"] = name
+	opts.Filters["removed_null"] = "1"
+
+	envs, err := lbc.client.Environment.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", name, err)
+	}
+
+	if len(envs.Data) >= 1 {
+		return &envs.Data[0], nil
+	}
+	return nil, fmt.Errorf("Coudln't get stack by name [%s]", name)
+}
+
 func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancerService, error) {
-	stack, err := lbc.getOrCreateStack()
+	stack, err := lbc.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
 	}
@@ -157,12 +174,15 @@ func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 		return nil, err
 	}
 	if lb != nil {
+		if lb.State != "active" {
+			return lbc.activateLBService(lb)
+		}
 		return lb, nil
 	}
 
-	// port 80 will be overritten by ports
+	// private port 80 will be overritten by ports
 	// in hostname routing rules
-	lbPorts := []string{"80:80/tcp"}
+	lbPorts := []string{"80:80"}
 
 	lb = &client.LoadBalancerService{
 		Name:          name,
@@ -174,10 +194,65 @@ func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 
 	lb, err = lbc.client.LoadBalancerService.Create(lb)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create LB %s. Error: %#v", name, err)
+		return nil, fmt.Errorf("Unable to create LB [%s]. Error: %#v", name, err)
 	}
 
 	return lbc.activateLBService(lb)
+}
+
+func (lbc *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *lbconfig.LoadBalancerConfig) error {
+	if len(lbConfig.FrontendServices) == 0 {
+		glog.Infof("Config [%s] doesn't have any rules defined", lbConfig.Name)
+		return nil
+	}
+	actionChannel := lbc.waitForLBAction("setservicelinks", lb)
+	_, ok := <-actionChannel
+	if !ok {
+		return fmt.Errorf("Couldn't call setservicelinks on LB [%s]", lb.Name)
+	}
+
+	lb, err := lbc.reloadLBService(lb)
+	if err != nil {
+		return err
+	}
+	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
+
+	glog.Infof("Nubmer of backends is  %v", len(lbConfig.FrontendServices[0].BackendServices))
+	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
+		svc, err := lbc.getKubernetesServiceByName(bcknd.Name, lbConfig.Namespace)
+		if err != nil {
+			return err
+		}
+		if svc == nil {
+			return fmt.Errorf("Failed to find service [%s] in stack [%s] in Rancher", bcknd.Name, lbConfig.Namespace)
+		}
+		ports := []string{}
+		var port string
+		bckndPort := strconv.Itoa(bcknd.Port)
+		if bcknd.Host != "" && bcknd.Path != "" {
+			// public port is always 80
+			port = fmt.Sprintf("%s%s=%s", bcknd.Host, bcknd.Path, bckndPort)
+		} else if bcknd.Host != "" {
+			port = fmt.Sprintf("%s=%s", bcknd.Host, bckndPort)
+		} else if bcknd.Path != "" {
+			port = fmt.Sprintf("%s=%s", bcknd.Path, bckndPort)
+		}
+		glog.Infof("Port is  %v", port)
+		ports = append(ports, port)
+
+		link := &client.LoadBalancerServiceLink{
+			ServiceId: svc.Id,
+			Ports:     ports,
+		}
+		serviceLinks.ServiceLinks = append(serviceLinks.ServiceLinks, link)
+
+	}
+
+	_, err = lbc.client.LoadBalancerService.ActionSetservicelinks(lb, serviceLinks)
+	if err != nil {
+		return fmt.Errorf("Failed to set service links for lb [%s]. Error: %#v", lb.Name, err)
+	}
+	return nil
 }
 
 func (lbc *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
@@ -185,7 +260,7 @@ func (lbc *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 	actionChannel := lbc.waitForLBAction("activate", lb)
 	_, ok := <-actionChannel
 	if !ok {
-		return nil, fmt.Errorf("Couldn't call activate on LB %s", lb.Name)
+		return nil, fmt.Errorf("Couldn't call activate on LB [%s]", lb.Name)
 	}
 	lb, err := lbc.reloadLBService(lb)
 	if err != nil {
@@ -193,14 +268,25 @@ func (lbc *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 	}
 	_, err = lbc.client.LoadBalancerService.ActionActivate(lb)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating LB %s. Couldn't activate LB. Error: %#v", lb.Name, err)
+		return nil, fmt.Errorf("Error creating LB [%s]. Couldn't activate LB. Error: %#v", lb.Name, err)
+	}
+
+	// wait for state to become active
+	stateCh := lbc.waitForLBAction("deactivate", lb)
+	_, ok = <-stateCh
+	if !ok {
+		return nil, fmt.Errorf("Timed out waiting for LB to activate %s", lb.Name)
 	}
 
 	// wait for LB public endpoints
+	lb, err = lbc.reloadLBService(lb)
+	if err != nil {
+		return nil, err
+	}
 	epChannel := lbc.waitForLBPublicEndpoints(1, lb)
 	_, ok = <-epChannel
 	if !ok {
-		return nil, fmt.Errorf("Couldn't get publicEndpoints for LB %s", lb.Name)
+		return nil, fmt.Errorf("Couldn't get publicEndpoints for LB [%s]", lb.Name)
 	}
 
 	return lbc.reloadLBService(lb)
@@ -209,13 +295,13 @@ func (lbc *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 func (lbc *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
 	lb, err := lbc.client.LoadBalancerService.ById(lb.Id)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't reload LB %s. Error: %#v", lb.Name, err)
+		return nil, fmt.Errorf("Couldn't reload LB [%s]. Error: %#v", lb.Name, err)
 	}
 	return lb, nil
 }
 
 func (lbc *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {
-	stack, err := lbc.getOrCreateStack()
+	stack, err := lbc.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +313,28 @@ func (lbc *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalan
 	lbs, err := lbc.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get LB service by name [%s]. Error: %#v", name, err)
+	}
+
+	if len(lbs.Data) == 0 {
+		return nil, nil
+	}
+
+	return &lbs.Data[0], nil
+}
+
+func (lbc *RancherLBProvider) getKubernetesServiceByName(name string, stackName string) (*client.KubernetesService, error) {
+	stack, err := lbc.getStack(stackName)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := client.NewListOpts()
+	opts.Filters["name"] = name
+	opts.Filters["removed_null"] = "1"
+	opts.Filters["environment_id"] = stack.Id
+	lbs, err := lbc.client.KubernetesService.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("Coudln't get service by name [%s]. Error: %#v", name, err)
 	}
 
 	if len(lbs.Data) == 0 {

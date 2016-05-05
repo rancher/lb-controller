@@ -21,16 +21,11 @@ spec:
           - name: CATTLE_URL
             value: "http://10.0.2.2:8080/v1"
           - name: CATTLE_ACCESS_KEY
-            value: "51313AE0910ABF660506"
+            value: "41C575A65B3FFA8E56D7"
           - name: CATTLE_SECRET_KEY
-            value: "pLRL6tC4Vr1gY2zQ4QfmmkuPdmQvkHoADmDYcsD4"
+            value: "38ewXco3uagrLn8QkfwCuS8KUVvkXR75Zh6J8QeV"
           - name: KUBERNETES_SERVER
             value: "http://master:80"
-        ports:
-        - containerPort: 80
-          hostPort: 80
-        - containerPort: 443
-          hostPort: 443
         args:
         - rancher-ingress
         - --lb-controller=kubernetes
