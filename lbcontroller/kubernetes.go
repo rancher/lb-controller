@@ -28,8 +28,6 @@ var (
 	flags        = pflag.NewFlagSet("", pflag.ExitOnError)
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
-
-	lbProvider lbprovider.LBProvider
 )
 
 func init() {
@@ -71,6 +69,7 @@ type loadBalancerController struct {
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
+	lbProvider     lbprovider.LBProvider
 }
 
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string) (*loadBalancerController, error) {
@@ -149,7 +148,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 }
 
 func (lbc *loadBalancerController) cleanupLB(key string) {
-	if err := lbProvider.CleanupLB(key); err != nil {
+	if err := lbc.lbProvider.CleanupConfig(key); err != nil {
 		lbc.syncQueue.Requeue(key, fmt.Errorf("Failed to cleanup lb [%s]", key))
 		return
 	}
@@ -201,7 +200,7 @@ func (lbc *loadBalancerController) sync(key string) {
 		return
 	}
 	for _, cfg := range lbc.GetLBConfigs() {
-		if err := lbProvider.ApplyConfig(cfg); err != nil {
+		if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
 			glog.Errorf("Failed to apply lb config on provider: %v", err)
 		}
 	}
@@ -250,7 +249,7 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 }
 
 func (lbc *loadBalancerController) getPublicEndpoint(key string) string {
-	providerEP := lbProvider.GetPublicEndpoint(key)
+	providerEP := lbc.lbProvider.GetPublicEndpoint(key)
 	return providerEP
 }
 
@@ -276,7 +275,7 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
 	go lbc.cleanupQueue.Run(time.Second, lbc.stopCh)
 
-	lbProvider = provider
+	lbc.lbProvider = provider
 
 	<-lbc.stopCh
 	glog.Infof("shutting down kubernetes-ingress-controller")
@@ -407,7 +406,7 @@ func (lbc *loadBalancerController) Stop() error {
 	if !lbc.shutdown {
 
 		lbc.removeFromIngress()
-
+		lbc.lbProvider.Stop()
 		close(lbc.stopCh)
 		glog.Infof("shutting down controller queues")
 		lbc.shutdown = true

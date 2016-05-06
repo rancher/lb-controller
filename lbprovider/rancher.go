@@ -72,11 +72,29 @@ func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 	return lbc.setServiceLinks(lb, lbConfig)
 }
 
-func (lbc *RancherLBProvider) CleanupLB(name string) error {
+func (lbc *RancherLBProvider) CleanupConfig(name string) error {
 	fmtName := lbc.formatLBName(name)
 	glog.Infof("Deleting lb service [%s]", fmtName)
 
 	return lbc.deleteLBService(fmtName)
+}
+
+func (lbc *RancherLBProvider) Stop() error {
+	glog.Infof("Deleting lb stack [%s]", lbStackName)
+
+	return lbc.deleteLBStack()
+}
+
+func (lbc *RancherLBProvider) deleteLBStack() error {
+	stack, err := lbc.getStack(lbStackName)
+	if err != nil {
+		return err
+	}
+	if stack == nil {
+		glog.Infof("System LB stack [%s] doesn't exist, no need to cleanup", lbStackName)
+	}
+	_, err = lbc.client.Environment.ActionRemove(stack)
+	return err
 }
 
 func (lbc *RancherLBProvider) deleteLBService(name string) error {
@@ -103,9 +121,9 @@ func (lbc *RancherLBProvider) GetName() string {
 	return "rancher"
 }
 
-func (lbc *RancherLBProvider) GetPublicEndpoint(lbName string) string {
+func (lbc *RancherLBProvider) GetPublicEndpoint(configName string) string {
 	epStr := ""
-	lbFmt := lbc.formatLBName(lbName)
+	lbFmt := lbc.formatLBName(configName)
 	lb, err := lbc.createLBService(lbFmt)
 	if err != nil {
 		glog.Errorf("Failed to find lb service [%s] %v", lbFmt, err)
