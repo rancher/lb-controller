@@ -23,7 +23,7 @@ func GetProvider(name string) LBProvider {
 	if provider, ok := providers[name]; ok {
 		return provider
 	}
-	return providers["haproxy"]
+	return providers["rancher"]
 }
 
 func RegisterProvider(name string, provider LBProvider) error {
