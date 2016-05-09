@@ -27,8 +27,8 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-          - name: KUBERNETES_SERVER
-            value: "http://master:80"
+          - name: KUBERNETES_URL
+            value: "http://master"
           - name: HAPROXY_CONFIG
             value: "/etc/haproxy/haproxy.cfg"
         ports:

@@ -135,3 +135,6 @@ import:
 
 - package: github.com/gorilla/websocket
   version: 1551221275a7bd42978745a376b2531f791d88f3
+
+- package: github.com/rancher/go-machine-service/locks
+  version: b2ff246e79f9e45489f0d9c693f75590aafb45ee

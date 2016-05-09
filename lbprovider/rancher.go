@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/golang/glog"
+	"github.com/rancher/go-machine-service/locks"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-ingress/lbconfig"
 	"os"
@@ -64,6 +65,13 @@ type RancherLBProvider struct {
 }
 
 func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+	unlocker := locks.Lock(lbConfig.Name)
+	if unlocker == nil {
+		glog.Infof("LB [%s] locked. Dropping event", lbConfig.Name)
+		return nil
+	}
+	defer unlocker.Unlock()
+
 	lb, err := lbc.createLBService(lbc.formatLBName(lbConfig.Name))
 	if err != nil {
 		return err
@@ -73,6 +81,12 @@ func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 }
 
 func (lbc *RancherLBProvider) CleanupConfig(name string) error {
+	unlocker := locks.Lock(name)
+	if unlocker == nil {
+		glog.Infof("LB [%s] locked. Dropping event", name)
+		return nil
+	}
+	defer unlocker.Unlock()
 	fmtName := lbc.formatLBName(name)
 	glog.Infof("Deleting lb service [%s]", fmtName)
 
@@ -124,9 +138,13 @@ func (lbc *RancherLBProvider) GetName() string {
 func (lbc *RancherLBProvider) GetPublicEndpoint(configName string) string {
 	epStr := ""
 	lbFmt := lbc.formatLBName(configName)
-	lb, err := lbc.createLBService(lbFmt)
+	lb, err := lbc.getLBServiceByName(configName)
 	if err != nil {
-		glog.Errorf("Failed to find lb service [%s] %v", lbFmt, err)
+		glog.Errorf("Failed to find lb service [%s]: %v", lbFmt, err)
+		return epStr
+	}
+	if lb == nil {
+		glog.Errorf("Failed to find lb service [%s]", lbFmt)
 		return epStr
 	}
 	eps := lb.PublicEndpoints
@@ -208,8 +226,6 @@ func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 	if err != nil {
 		return nil, err
 	}
-	//FIXME - check if public endpoint got changed
-	//this is the only time ingress should be updated
 	lb, err := lbc.getLBServiceByName(name)
 	if err != nil {
 		return nil, err

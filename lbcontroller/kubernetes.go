@@ -32,8 +32,8 @@ var (
 
 func init() {
 	var server string
-	if server = os.Getenv("KUBERNETES_SERVER"); len(server) == 0 {
-		glog.Info("KUBERNETES_SERVER is not set, skipping init of kubernetes controller")
+	if server = os.Getenv("KUBERNETES_URL"); len(server) == 0 {
+		glog.Info("KUBERNETES_URL is not set, skipping init of kubernetes controller")
 		return
 	}
 	config := &restclient.Config{

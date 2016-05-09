@@ -24,8 +24,8 @@ spec:
             value: "41C575A65B3FFA8E56D7"
           - name: CATTLE_SECRET_KEY
             value: "38ewXco3uagrLn8QkfwCuS8KUVvkXR75Zh6J8QeV"
-          - name: KUBERNETES_SERVER
-            value: "http://master:80"
+          - name: KUBERNETES_URL
+            value: "http://master"
         args:
         - rancher-ingress
         - --lb-controller=kubernetes
