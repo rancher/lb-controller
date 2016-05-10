@@ -1,0 +1,20 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test
+spec:
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - path: /foo
+        backend:
+          serviceName: nginx-service
+          servicePort: 80
+  - host: bar.foo.com
+    http:
+      paths:
+      - path: /bar
+        backend:
+          serviceName: nginx-service1
+          servicePort: 80 
