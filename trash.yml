@@ -141,3 +141,6 @@ import:
 
 - package: github.com/Sirupsen/logrus
   version: 446d1c146faa8ed3f4218f056fcd165f6bcfda81
+
+- package: github.com/golang/glog
+  version: 44145f04b68cf362d9c4df2182967c2275eaefed

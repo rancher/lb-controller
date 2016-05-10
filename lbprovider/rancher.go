@@ -132,7 +132,6 @@ func (lbp *RancherLBProvider) syncupEndpoints() error {
 		for _, lb := range lbs {
 			splitted := strings.SplitN(lb.Name, "-", 2)
 			lbp.syncEndpointsQueue.Enqueue(fmt.Sprintf("%v/%v", splitted[0], splitted[1]))
-			logrus.Infof("Syncing up %v", fmt.Sprintf("%v/%v", splitted[0], splitted[1]))
 		}
 	}
 }
@@ -390,7 +389,7 @@ func (lbp *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 	stateCh := lbp.waitForLBAction("deactivate", lb)
 	_, ok = <-stateCh
 	if !ok {
-		return nil, fmt.Errorf("Timed out waiting for LB to activate %s", lb.Name)
+		return nil, fmt.Errorf("Timed out waiting for LB to activate [%s]. Transitioning state: [%v]", lb.Name, lb.TransitioningMessage)
 	}
 
 	// wait for LB public endpoints
@@ -514,7 +513,7 @@ func (lbp *RancherLBProvider) waitForCondition(condition string, callback waitCa
 	go func() {
 		sleep := 2
 		defer close(ready)
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 10; i++ {
 			found, err := callback(ready)
 			if err != nil {
 				logrus.Errorf("Error: %#v", err)
@@ -526,7 +525,7 @@ func (lbp *RancherLBProvider) waitForCondition(condition string, callback waitCa
 			}
 			time.Sleep(time.Second * time.Duration(sleep))
 		}
-		logrus.Errorf("Timed out waiting for condition %s.", condition)
+		logrus.Errorf("Timed out waiting for condition [%s] ", condition)
 	}()
 	return ready
 }
