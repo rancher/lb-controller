@@ -334,7 +334,7 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 }
 
 func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig {
-	backends := []lbconfig.BackendService{}
+	backends := []*lbconfig.BackendService{}
 	ings := lbc.ingLister.Store.List()
 	lbConfigs := []*lbconfig.LoadBalancerConfig{}
 	if len(ings) == 0 {
@@ -342,51 +342,42 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 	}
 	for _, ingIf := range ings {
 		ing := ingIf.(*extensions.Ingress)
+		// process default rule
+		if ing.Spec.Backend != nil {
+			svcName := ing.Spec.Backend.ServiceName
+			svcPort := ing.Spec.Backend.ServicePort.IntValue()
+			svc, _ := lbc.getService(svcName, ing.GetNamespace())
+			if svc != nil {
+				backend := lbc.getServiceBackend(svc, svcPort, "", "")
+				if backend != nil {
+					backends = append(backends, backend)
+				}
+			}
+		}
+
 		for _, rule := range ing.Spec.Rules {
 			logrus.Infof("Processing ingress rule %v", rule)
 			// process http rules only
 			if rule.IngressRuleValue.HTTP == nil {
 				continue
 			}
+
+			// process host name routing rules
 			for _, path := range rule.HTTP.Paths {
 				svcName := path.Backend.ServiceName
-				svcKey := fmt.Sprintf("%v/%v", ing.GetNamespace(), path.Backend.ServiceName)
-				svcObj, svcExists, err := lbc.svcLister.Store.GetByKey(svcKey)
-				if err != nil {
-					logrus.Infof("error getting service %v from the cache: %v", svcKey, err)
+				svc, _ := lbc.getService(svcName, ing.GetNamespace())
+				if svc == nil {
 					continue
 				}
-
-				if !svcExists {
-					logrus.Warningf("service %v does no exists", svcKey)
-					continue
-				}
-
-				svc := svcObj.(*api.Service)
-
-				for _, servicePort := range svc.Spec.Ports {
-					if servicePort.Port == path.Backend.ServicePort.IntValue() {
-						eps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
-						if len(eps) == 0 {
-							continue
-						}
-						backend := lbconfig.BackendService{
-							Name:      svcName,
-							Endpoints: eps,
-							Algorithm: "roundrobin",
-							Path:      path.Path,
-							Host:      rule.Host,
-							Port:      eps[0].Port,
-						}
-						backends = append(backends, backend)
-						break
-					}
+				backend := lbc.getServiceBackend(svc, path.Backend.ServicePort.IntValue(), path.Path, rule.Host)
+				if backend != nil {
+					backends = append(backends, backend)
 				}
 			}
 		}
 		//FIXME - add second frontend service for https port
-		frontEndServices := []lbconfig.FrontendService{}
-		frontEndService := lbconfig.FrontendService{
+		frontEndServices := []*lbconfig.FrontendService{}
+		frontEndService := &lbconfig.FrontendService{
 			Name:            ing.Name,
 			Port:            80,
 			BackendServices: backends,
@@ -394,13 +385,52 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 		frontEndServices = append(frontEndServices, frontEndService)
 		lbConfig := &lbconfig.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
-			Namespace:        ing.GetNamespace(),
 			FrontendServices: frontEndServices,
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
 	}
 
 	return lbConfigs
+}
+
+func (lbc *loadBalancerController) getServiceBackend(svc *api.Service, port int, path string, host string) *lbconfig.BackendService {
+	var backend *lbconfig.BackendService
+	for _, servicePort := range svc.Spec.Ports {
+		if servicePort.Port == port {
+			eps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
+			if len(eps) == 0 {
+				continue
+			}
+			backend = &lbconfig.BackendService{
+				Name:      svc.Name,
+				Namespace: svc.Namespace,
+				Endpoints: eps,
+				Algorithm: "roundrobin",
+				Path:      path,
+				Host:      host,
+				Port:      eps[0].Port,
+			}
+			break
+		}
+	}
+	return backend
+}
+
+func (lbc *loadBalancerController) getService(svcName string, namespace string) (*api.Service, error) {
+	svcKey := fmt.Sprintf("%v/%v", namespace, svcName)
+	svcObj, svcExists, err := lbc.svcLister.Store.GetByKey(svcKey)
+	if err != nil {
+		logrus.Infof("error getting service [%s] from the cache: %v", svcKey, err)
+		return nil, err
+	}
+
+	if !svcExists {
+		logrus.Warningf("service [%s] does no exists", svcKey)
+		return nil, nil
+	}
+
+	svc := svcObj.(*api.Service)
+	return svc, nil
 }
 
 // getEndpoints returns a list of <endpoint ip> for a given service combination.

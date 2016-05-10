@@ -20,8 +20,8 @@ type PublicEndpoint struct {
 }
 
 const (
-	controllerStackName       string = "kubernetes-ingress-controllers"
-	controllerStackExternalID string = "kubernetes-ingress-controllers://"
+	controllerStackName        string = "kubernetes-ingress-controllers"
+	controllerExternalIDPrefix string = "kubernetes-ingress-controllers://"
 )
 
 type RancherLBProvider struct {
@@ -161,6 +161,10 @@ func (lbp *RancherLBProvider) deleteLBService(name string) error {
 	if err != nil {
 		return err
 	}
+	if lb == nil {
+		logrus.Infof("LB [%s] doesn't exist, no need to cleanup ", name)
+		return nil
+	}
 	_, err = lbp.client.LoadBalancerService.ActionRemove(lb)
 	return err
 }
@@ -237,7 +241,7 @@ func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, err
 	opts := client.NewListOpts()
 	opts.Filters["name"] = controllerStackName
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["external_id"] = controllerStackExternalID
+	opts.Filters["external_id"] = controllerExternalIDPrefix
 
 	envs, err := lbp.client.Environment.List(opts)
 	if err != nil {
@@ -250,7 +254,7 @@ func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, err
 
 	env := &client.Environment{
 		Name:       controllerStackName,
-		ExternalId: controllerStackExternalID,
+		ExternalId: controllerExternalIDPrefix,
 	}
 
 	env, err = lbp.client.Environment.Create(env)
@@ -302,6 +306,7 @@ func (lbp *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 		LaunchConfig: &client.LaunchConfig{
 			Ports: lbPorts,
 		},
+		ExternalId: fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
 	}
 
 	lb, err = lbp.client.LoadBalancerService.Create(lb)
@@ -330,12 +335,12 @@ func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lb
 	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
 
 	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
-		svc, err := lbp.getKubernetesServiceByName(bcknd.Name, lbConfig.Namespace)
+		svc, err := lbp.getKubernetesServiceByName(bcknd.Name, bcknd.Namespace)
 		if err != nil {
 			return err
 		}
 		if svc == nil {
-			return fmt.Errorf("Failed to find service [%s] in stack [%s] in Rancher", bcknd.Name, lbConfig.Namespace)
+			return fmt.Errorf("Failed to find service [%s] in stack [%s] in Rancher", bcknd.Name, bcknd.Namespace)
 		}
 		ports := []string{}
 		var port string
@@ -411,8 +416,13 @@ func (lbp *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*
 }
 
 func (lbp *RancherLBProvider) getAllLBServices() ([]client.LoadBalancerService, error) {
+	stack, err := lbp.getOrCreateSystemStack()
+	if err != nil {
+		return nil, err
+	}
 	opts := client.NewListOpts()
 	opts.Filters["removed_null"] = "1"
+	opts.Filters["environment_id"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get all lb services. Error: %#v", err)

@@ -1,6 +1,7 @@
 package lbconfig
 
 type BackendService struct {
+	Namespace string
 	Name      string
 	Endpoints []Endpoint
 	Path      string
@@ -17,11 +18,11 @@ type Endpoint struct {
 type FrontendService struct {
 	Name            string
 	Port            int
-	BackendServices []BackendService
+	BackendServices []*BackendService
 }
 
 type LoadBalancerConfig struct {
 	Name             string
 	Namespace        string
-	FrontendServices []FrontendService
+	FrontendServices []*FrontendService
 }
