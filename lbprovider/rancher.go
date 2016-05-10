@@ -490,7 +490,7 @@ func (lbp *RancherLBProvider) waitForLBPublicEndpoints(count int, lb *client.Loa
 		if err != nil {
 			return false, err
 		}
-		if len(lb.PublicEndpoints) == count {
+		if len(lb.PublicEndpoints) >= count {
 			result <- lb
 			return true, nil
 		}
