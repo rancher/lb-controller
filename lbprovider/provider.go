@@ -3,6 +3,7 @@ package lbprovider
 import (
 	"fmt"
 	"github.com/rancher/ingress-controller/lbconfig"
+	utils "github.com/rancher/ingress-controller/utils"
 )
 
 const Localhost = "localhost"
@@ -10,9 +11,9 @@ const Localhost = "localhost"
 type LBProvider interface {
 	ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error
 	GetName() string
-	GetPublicEndpoint(configName string) string
+	GetPublicEndpoints(configName string) []string
 	CleanupConfig(configName string) error
-	Start() error
+	Run(syncEndpointsQueue *utils.TaskQueue)
 	Stop() error
 }
 

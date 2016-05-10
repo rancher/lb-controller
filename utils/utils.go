@@ -35,12 +35,16 @@ func (t *TaskQueue) Run(period time.Duration, stopCh <-chan struct{}) {
 
 // Enqueue enqueues ns/name of the given api object in the task queue.
 func (t *TaskQueue) Enqueue(obj interface{}) {
-	key, err := keyFunc(obj)
-	if err != nil {
-		logrus.Infof("could not get key for object %+v: %v", obj, err)
-		return
+	if key, ok := obj.(string); ok {
+		t.queue.Add(key)
+	} else {
+		key, err := keyFunc(obj)
+		if err != nil {
+			logrus.Infof("could not get key for object %+v: %v", obj, err)
+			return
+		}
+		t.queue.Add(key)
 	}
-	t.queue.Add(key)
 }
 
 func (t *TaskQueue) Requeue(key string, err error) {

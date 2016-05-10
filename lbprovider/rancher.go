@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/go-machine-service/locks"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/ingress-controller/lbconfig"
+	utils "github.com/rancher/ingress-controller/utils"
 	"os"
 	"strconv"
 	"strings"
@@ -19,14 +20,15 @@ type PublicEndpoint struct {
 }
 
 const (
-	lbNameFormat      string = "lb-%s"
-	lbStackName       string = "kubernetes-ingress-loadbalancers"
-	lbStackExternalID string = "kubernetes-ingress-loadbalancers://"
+	controllerStackName       string = "kubernetes-ingress-controllers"
+	controllerStackExternalID string = "kubernetes-ingress-controllers://"
 )
 
 type RancherLBProvider struct {
-	client *client.RancherClient
-	opts   *client.ClientOpts
+	client             *client.RancherClient
+	opts               *client.ClientOpts
+	syncEndpointsQueue *utils.TaskQueue
+	stopCh             chan struct{}
 }
 
 func init() {
@@ -63,6 +65,7 @@ func init() {
 	lbp := &RancherLBProvider{
 		client: client,
 		opts:   opts,
+		stopCh: make(chan struct{}),
 	}
 
 	RegisterProvider(lbp.GetName(), lbp)
@@ -98,34 +101,61 @@ func (lbp *RancherLBProvider) CleanupConfig(name string) error {
 }
 
 func (lbp *RancherLBProvider) Stop() error {
-	logrus.Infof("Deleting lb stack [%s]", lbStackName)
-
+	close(lbp.stopCh)
+	logrus.Infof("shutting down syncEndpointsQueue")
+	lbp.syncEndpointsQueue.Shutdown()
+	logrus.Infof("Deleting ingress controller stack [%s]", controllerStackName)
 	return lbp.deleteLBStack()
 }
 
-func (lbp *RancherLBProvider) Start() error {
-	return nil
+func (lbp *RancherLBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
+	lbp.syncEndpointsQueue = syncEndpointsQueue
+	go lbp.syncEndpointsQueue.Run(time.Second, lbp.stopCh)
+
+	go lbp.syncupEndpoints()
+
+	<-lbp.stopCh
+	logrus.Infof("shutting down kubernetes-ingress-controller")
+}
+
+func (lbp *RancherLBProvider) syncupEndpoints() error {
+	// FIXME - change to listen to state.change events
+	// figure out why events weren't received by this agent account
+	for {
+		time.Sleep(30 * time.Second)
+		//get all lb services in the system
+		lbs, err := lbp.getAllLBServices()
+		if err != nil {
+			logrus.Errorf("Failed to get lb services: %v", err)
+			continue
+		}
+		for _, lb := range lbs {
+			splitted := strings.SplitN(lb.Name, "-", 2)
+			lbp.syncEndpointsQueue.Enqueue(fmt.Sprintf("%v/%v", splitted[0], splitted[1]))
+			logrus.Infof("Syncing up %v", fmt.Sprintf("%v/%v", splitted[0], splitted[1]))
+		}
+	}
 }
 
 func (lbp *RancherLBProvider) deleteLBStack() error {
-	stack, err := lbp.getStack(lbStackName)
+	stack, err := lbp.getStack(controllerStackName)
 	if err != nil {
 		return err
 	}
 	if stack == nil {
-		logrus.Infof("System LB stack [%s] doesn't exist, no need to cleanup", lbStackName)
+		logrus.Infof("Ingress controller stack [%s] doesn't exist, no need to cleanup", controllerStackName)
 	}
 	_, err = lbp.client.Environment.ActionRemove(stack)
 	return err
 }
 
 func (lbp *RancherLBProvider) deleteLBService(name string) error {
-	stack, err := lbp.getStack(lbStackName)
+	stack, err := lbp.getStack(controllerStackName)
 	if err != nil {
 		return err
 	}
 	if stack == nil {
-		logrus.Infof("System LB stack [%s] doesn't exist, no need to cleanup LB ", lbStackName)
+		logrus.Infof("Ingress controller stack [%s] doesn't exist, no need to cleanup LB ", controllerStackName)
 	}
 	lb, err := lbp.getLBServiceByName(name)
 	if err != nil {
@@ -143,33 +173,50 @@ func (lbp *RancherLBProvider) GetName() string {
 	return "rancher"
 }
 
-func (lbp *RancherLBProvider) GetPublicEndpoint(configName string) string {
-	epStr := ""
+func (lbp *RancherLBProvider) GetPublicEndpoints(configName string) []string {
+	epStr := []string{}
 	lbFmt := lbp.formatLBName(configName)
-	lb, err := lbp.getLBServiceByName(configName)
+	lb, err := lbp.getLBServiceByName(lbFmt)
 	if err != nil {
-		logrus.Errorf("Failed to find lb service [%s]: %v", lbFmt, err)
+		logrus.Errorf("Failed to find LB [%s]: %v", lbFmt, err)
 		return epStr
 	}
 	if lb == nil {
-		logrus.Errorf("Failed to find lb service [%s]", lbFmt)
+		logrus.Errorf("Failed to find LB [%s]", lbFmt)
 		return epStr
 	}
+
+	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
+	_, ok := <-epChannel
+	if !ok {
+		logrus.Errorf("Couldn't get publicEndpoints for LB [%s]", lbFmt)
+		return epStr
+	}
+
+	lb, err = lbp.reloadLBService(lb)
+	if err != nil {
+		logrus.Errorf("Failed to reload LB [%s]", lbFmt)
+		return epStr
+	}
+
 	eps := lb.PublicEndpoints
 	if len(eps) == 0 {
 		logrus.Errorf("No public endpoints found for lb %s", lbFmt)
 		return epStr
 	}
 
-	ep := PublicEndpoint{}
+	for _, epObj := range eps {
+		ep := PublicEndpoint{}
 
-	err = convertObject(eps[0], &ep)
-	if err != nil {
-		logrus.Errorf("No public endpoints found for lb %v", err)
-		return epStr
+		err = convertObject(epObj, &ep)
+		if err != nil {
+			logrus.Errorf("No public endpoints found for lb %v", err)
+			return epStr
+		}
+		epStr = append(epStr, ep.IPAddress)
 	}
 
-	return ep.IPAddress
+	return epStr
 }
 
 func convertObject(obj1 interface{}, obj2 interface{}) error {
@@ -188,13 +235,13 @@ type waitCallback func(result chan<- interface{}) (bool, error)
 
 func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 	opts := client.NewListOpts()
-	opts.Filters["name"] = lbStackName
+	opts.Filters["name"] = controllerStackName
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["external_id"] = lbStackExternalID
+	opts.Filters["external_id"] = controllerStackExternalID
 
 	envs, err := lbp.client.Environment.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", lbStackName, err)
+		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", controllerStackName, err)
 	}
 
 	if len(envs.Data) >= 1 {
@@ -202,13 +249,13 @@ func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, err
 	}
 
 	env := &client.Environment{
-		Name:       lbStackName,
-		ExternalId: lbStackExternalID,
+		Name:       controllerStackName,
+		ExternalId: controllerStackExternalID,
 	}
 
 	env, err = lbp.client.Environment.Create(env)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't create stack [%s] for kubernetes LB ingress. Error: %#v", lbStackName, err)
+		return nil, fmt.Errorf("Couldn't create ingress controller stack [%s]. Error: %#v", controllerStackName, err)
 	}
 	return env, nil
 }
@@ -361,6 +408,17 @@ func (lbp *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*
 		return nil, fmt.Errorf("Couldn't reload LB [%s]. Error: %#v", lb.Name, err)
 	}
 	return lb, nil
+}
+
+func (lbp *RancherLBProvider) getAllLBServices() ([]client.LoadBalancerService, error) {
+	opts := client.NewListOpts()
+	opts.Filters["removed_null"] = "1"
+	lbs, err := lbp.client.LoadBalancerService.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("Coudln't get all lb services. Error: %#v", err)
+	}
+
+	return lbs.Data, nil
 }
 
 func (lbp *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {

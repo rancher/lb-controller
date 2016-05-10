@@ -9,6 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/ingress-controller/lbconfig"
 	"github.com/rancher/ingress-controller/lbprovider"
+	utils "github.com/rancher/ingress-controller/utils"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
@@ -59,13 +60,13 @@ type loadBalancerController struct {
 	ingController  *framework.Controller
 	endpController *framework.Controller
 	svcController  *framework.Controller
-	ingLister      StoreToIngressLister
+	ingLister      utils.StoreToIngressLister
 	svcLister      cache.StoreToServiceLister
 	endpLister     cache.StoreToEndpointsLister
 	recorder       record.EventRecorder
-	syncQueue      *TaskQueue
-	ingQueue       *TaskQueue
-	cleanupQueue   *TaskQueue
+	syncQueue      *utils.TaskQueue
+	ingQueue       *utils.TaskQueue
+	cleanupQueue   *utils.TaskQueue
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
@@ -82,9 +83,9 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
 	}
 
-	lbc.syncQueue = NewTaskQueue(lbc.sync)
-	lbc.ingQueue = NewTaskQueue(lbc.updateIngressStatus)
-	lbc.cleanupQueue = NewTaskQueue(lbc.cleanupLB)
+	lbc.syncQueue = utils.NewTaskQueue(lbc.sync)
+	lbc.ingQueue = utils.NewTaskQueue(lbc.updateIngressStatus)
+	lbc.cleanupQueue = utils.NewTaskQueue(lbc.cleanupLB)
 
 	ingEventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -233,30 +234,31 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 	}
 
 	lbIPs := ing.Status.LoadBalancer.Ingress
-	publicEndpoint := lbc.getPublicEndpoint(key)
-	if !lbc.isStatusIPDefined(lbIPs, key) {
-		logrus.Infof("Updating ingress %v/%v with IP %v", ing.Namespace, ing.Name, publicEndpoint)
-		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
-			IP: publicEndpoint,
-		})
-		if _, err := ingClient.UpdateStatus(currIng); err != nil {
-			lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
-			return
-		}
+	publicEndpoints := lbc.getPublicEndpoints(key)
+	for _, publicEndpoint := range publicEndpoints {
+		if !lbc.isStatusIPDefined(lbIPs, publicEndpoint) {
+			logrus.Infof("Updating ingress %v/%v with IP %v", ing.Namespace, ing.Name, publicEndpoint)
+			currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
+				IP: publicEndpoint,
+			})
+			if _, err := ingClient.UpdateStatus(currIng); err != nil {
+				lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
+				return
+			}
 
-		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", publicEndpoint)
+			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", publicEndpoint)
+		}
 	}
 }
 
-func (lbc *loadBalancerController) getPublicEndpoint(key string) string {
-	providerEP := lbc.lbProvider.GetPublicEndpoint(key)
+func (lbc *loadBalancerController) getPublicEndpoints(key string) []string {
+	providerEP := lbc.lbProvider.GetPublicEndpoints(key)
 	return providerEP
 }
 
-func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress, key string) bool {
+func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress, IP string) bool {
 	for _, lbing := range lbings {
-		publicEndpoint := lbc.getPublicEndpoint(key)
-		if lbing.IP == publicEndpoint {
+		if lbing.IP == IP {
 			return true
 		}
 	}
@@ -276,10 +278,7 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 	go lbc.cleanupQueue.Run(time.Second, lbc.stopCh)
 
 	lbc.lbProvider = provider
-	err := lbc.lbProvider.Start()
-	if err != nil {
-		logrus.Fatalf("Failed to start lb provider [%s]: %v", lbc.lbProvider.GetName(), err)
-	}
+	go lbc.lbProvider.Run(utils.NewTaskQueue(lbc.updateIngressStatus))
 
 	<-lbc.stopCh
 	logrus.Infof("shutting down kubernetes-ingress-controller")
@@ -414,6 +413,8 @@ func (lbc *loadBalancerController) Stop() error {
 		logrus.Infof("shutting down controller queues")
 		lbc.shutdown = true
 		lbc.syncQueue.Shutdown()
+		lbc.ingQueue.Shutdown()
+		lbc.cleanupQueue.Shutdown()
 
 		return nil
 	}
@@ -435,24 +436,26 @@ func (lbc *loadBalancerController) removeFromIngress() {
 		}
 
 		lbIPs := ing.Status.LoadBalancer.Ingress
-		publicEndpoint := lbc.getPublicEndpoint(fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name))
-		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs, publicEndpoint) {
-			logrus.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, publicEndpoint)
+		publicEndpoints := lbc.getPublicEndpoints(fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name))
+		for _, publicEndpoint := range publicEndpoints {
+			if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs, publicEndpoint) {
+				logrus.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, publicEndpoint)
 
-			for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
-				if lbStatus.IP == publicEndpoint {
-					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
-						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
-					break
+				for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
+					if lbStatus.IP == publicEndpoint {
+						currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
+							currIng.Status.LoadBalancer.Ingress[idx+1:]...)
+						break
+					}
 				}
-			}
 
-			if _, err := ingClient.UpdateStatus(currIng); err != nil {
-				lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
-				continue
-			}
+				if _, err := ingClient.UpdateStatus(currIng); err != nil {
+					lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
+					continue
+				}
 
-			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", publicEndpoint)
+				lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", publicEndpoint)
+			}
 		}
 	}
 }
