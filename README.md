@@ -1,1 +1,1 @@
-# Work in progress rancher-ingress project
+# Work in progress ingress-controller project

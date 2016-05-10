@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"github.com/golang/glog"
-	"github.com/rancher/rancher-ingress/lbcontroller"
-	"github.com/rancher/rancher-ingress/lbprovider"
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/ingress-controller/lbcontroller"
+	"github.com/rancher/ingress-controller/lbprovider"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,36 +22,37 @@ func setEnv() {
 	flag.Parse()
 	lbc = lbcontroller.GetController(*lbControllerName)
 	if lbc == nil {
-		glog.Fatalf("Unable to find controller by name %s", *lbControllerName)
+		logrus.Fatalf("Unable to find controller by name %s", *lbControllerName)
 	}
 	lbp = lbprovider.GetProvider(*lbProviderName)
 	if lbp == nil {
-		glog.Fatalf("Unable to find provider by name %s", *lbProviderName)
+		logrus.Fatalf("Unable to find provider by name %s", *lbProviderName)
 	}
 }
 
 func main() {
-	glog.Infof("Starting Rancher LB service")
+	logrus.Infof("Starting Rancher LB service")
 	setEnv()
-	glog.Infof("LB controller: %s", lbc.GetName())
-	glog.Infof("LB provider: %s", lbp.GetName())
+	logrus.Infof("LB controller: %s", lbc.GetName())
+	logrus.Infof("LB provider: %s", lbp.GetName())
 
-	go handleSigterm(lbc)
+	go handleSigterm(lbc, lbp)
 
 	lbc.Run(lbp)
 }
 
-func handleSigterm(lbc lbcontroller.LBController) {
+func handleSigterm(lbc lbcontroller.LBController, lbp lbprovider.LBProvider) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM)
 	<-signalChan
-	glog.Infof("Received SIGTERM, shutting down")
+	logrus.Infof("Received SIGTERM, shutting down")
 
 	exitCode := 0
+	// stop the controller
 	if err := lbc.Stop(); err != nil {
-		glog.Infof("Error during shutdown %v", err)
+		logrus.Infof("Error during shutdown %v", err)
 		exitCode = 1
 	}
-	glog.Infof("Exiting with %v", exitCode)
+	logrus.Infof("Exiting with %v", exitCode)
 	os.Exit(exitCode)
 }

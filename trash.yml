@@ -37,9 +37,6 @@ import:
 - package: github.com/ghodss/yaml
   version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
 
-- package: github.com/golang/glog
-  version: 44145f04b68cf362d9c4df2182967c2275eaefed
-
 - package: github.com/golang/groupcache/lru
   version: 604ed5785183e59ae2789449d89e73f3a2a77987
 
@@ -138,3 +135,9 @@ import:
 
 - package: github.com/rancher/go-machine-service/locks
   version: b2ff246e79f9e45489f0d9c693f75590aafb45ee
+
+- package: github.com/rancher/go-machine-service/events
+  version: b2ff246e79f9e45489f0d9c693f75590aafb45ee
+
+- package: github.com/Sirupsen/logrus
+  version: 446d1c146faa8ed3f4218f056fcd165f6bcfda81

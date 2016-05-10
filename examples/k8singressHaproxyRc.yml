@@ -15,7 +15,7 @@ spec:
         name: rancher-ingress-lb
     spec:
       containers:
-      - image: rancher/rancher-ingress:dev
+      - image: rancher/ingress-controller:dev
         name: rancher-ingress-lb
         # use downward API
         env:
@@ -37,5 +37,6 @@ spec:
         - containerPort: 443
           hostPort: 443
         args:
-        - rancher-ingress
+        - ingress-controller
         - --lb-controller=kubernetes
+        - --lb-provider=haproxy

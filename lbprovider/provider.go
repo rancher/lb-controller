@@ -2,7 +2,7 @@ package lbprovider
 
 import (
 	"fmt"
-	"github.com/rancher/rancher-ingress/lbconfig"
+	"github.com/rancher/ingress-controller/lbconfig"
 )
 
 const Localhost = "localhost"
@@ -12,6 +12,7 @@ type LBProvider interface {
 	GetName() string
 	GetPublicEndpoint(configName string) string
 	CleanupConfig(configName string) error
+	Start() error
 	Stop() error
 }
 

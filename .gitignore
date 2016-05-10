@@ -1,4 +1,4 @@
-rancher-ingress
+ingress-controller
 Dockerfile.dapper[1-9]*
 bin
 dist

@@ -15,7 +15,7 @@ spec:
         name: rancher-ingress-lb
     spec:
       containers:
-      - image: rancher/rancher-ingress:dev
+      - image: rancher/ingress-controller:dev
         name: rancher-ingress-lb
         env:
           - name: CATTLE_URL
@@ -27,6 +27,6 @@ spec:
           - name: KUBERNETES_URL
             value: "http://master"
         args:
-        - rancher-ingress
+        - ingress-controller
         - --lb-controller=kubernetes
         - --lb-provider=rancher

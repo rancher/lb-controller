@@ -9,9 +9,9 @@ cd $(dirname $0)/../package
 TAG=${TAG:-${VERSION}}
 REPO=${REPO:-rancher}
 
-cp ../bin/rancher-ingress .
+cp ../bin/ingress-controller .
 cp ../lbprovider/{haproxy_reload,haproxy_template.cfg} .
 
-docker build -t ${REPO}/rancher-ingress:${TAG} .
+docker build -t ${REPO}/ingress-controller:${TAG} .
 
-echo Built ${REPO}/rancher-ingress:${TAG}
+echo Built ${REPO}/ingress-controller:${TAG}

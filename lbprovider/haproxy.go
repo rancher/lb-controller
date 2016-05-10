@@ -2,7 +2,7 @@ package lbprovider
 
 import (
 	"fmt"
-	"github.com/rancher/rancher-ingress/lbconfig"
+	"github.com/rancher/ingress-controller/lbconfig"
 	"io"
 	"os"
 	"os/exec"
@@ -12,7 +12,6 @@ import (
 func init() {
 	// var config string
 	// if config = os.Getenv("HAPROXY_CONFIG"); len(config) == 0 {
-	// 	glog.Info("HAPROXY_CONFIG is not set, skipping init of haproxy provider")
 	// 	return
 	// }
 	// haproxyCfg := &haproxyConfig{

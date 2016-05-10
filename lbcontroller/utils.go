@@ -1,7 +1,7 @@
 package lbcontroller
 
 import (
-	"github.com/golang/glog"
+	"github.com/Sirupsen/logrus"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -37,14 +37,14 @@ func (t *TaskQueue) Run(period time.Duration, stopCh <-chan struct{}) {
 func (t *TaskQueue) Enqueue(obj interface{}) {
 	key, err := keyFunc(obj)
 	if err != nil {
-		glog.Infof("could not get key for object %+v: %v", obj, err)
+		logrus.Infof("could not get key for object %+v: %v", obj, err)
 		return
 	}
 	t.queue.Add(key)
 }
 
 func (t *TaskQueue) Requeue(key string, err error) {
-	glog.V(3).Infof("requeuing %v, err %v", key, err)
+	logrus.Debugf("requeuing %v, err %v", key, err)
 	t.queue.Add(key)
 }
 
@@ -56,7 +56,7 @@ func (t *TaskQueue) worker() {
 			close(t.workerDone)
 			return
 		}
-		glog.V(3).Infof("syncing %v", key)
+		logrus.Debugf("syncing %v", key)
 		t.sync(key.(string))
 		t.queue.Done(key)
 	}
