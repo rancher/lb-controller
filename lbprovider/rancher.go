@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Sirupsen/logrus"
-	"github.com/rancher/go-machine-service/events"
 	"github.com/rancher/go-machine-service/locks"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/ingress-controller/lbconfig"
@@ -69,7 +68,7 @@ func init() {
 	RegisterProvider(lbp.GetName(), lbp)
 }
 
-func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
 	unlocker := locks.Lock(lbConfig.Name)
 	if unlocker == nil {
 		logrus.Infof("LB [%s] locked. Dropping event", lbConfig.Name)
@@ -77,92 +76,77 @@ func (lbc *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 	}
 	defer unlocker.Unlock()
 
-	lb, err := lbc.createLBService(lbc.formatLBName(lbConfig.Name))
+	lb, err := lbp.createLBService(lbp.formatLBName(lbConfig.Name))
 	if err != nil {
 		return err
 	}
 	logrus.Infof("Setting service links for service [%s]", lb.Name)
-	return lbc.setServiceLinks(lb, lbConfig)
+	return lbp.setServiceLinks(lb, lbConfig)
 }
 
-func (lbc *RancherLBProvider) CleanupConfig(name string) error {
+func (lbp *RancherLBProvider) CleanupConfig(name string) error {
 	unlocker := locks.Lock(name)
 	if unlocker == nil {
 		logrus.Infof("LB [%s] locked. Dropping event", name)
 		return nil
 	}
 	defer unlocker.Unlock()
-	fmtName := lbc.formatLBName(name)
+	fmtName := lbp.formatLBName(name)
 	logrus.Infof("Deleting lb service [%s]", fmtName)
 
-	return lbc.deleteLBService(fmtName)
+	return lbp.deleteLBService(fmtName)
 }
 
-func (lbc *RancherLBProvider) Stop() error {
+func (lbp *RancherLBProvider) Stop() error {
 	logrus.Infof("Deleting lb stack [%s]", lbStackName)
 
-	return lbc.deleteLBStack()
+	return lbp.deleteLBStack()
 }
 
-func (lbc *RancherLBProvider) Start() error {
-	logrus.Info("Creating event listener")
-	eventHandlers := map[string]events.EventHandler{
-		"service.update": updateIngressAddressHandler,
-		"ping":           pingHandler,
-	}
-
-	router, err := events.NewEventRouter("", 0, lbc.opts.Url, lbc.opts.AccessKey, lbc.opts.SecretKey, nil, eventHandlers, "", 10)
-	if err != nil {
-		logrus.Fatalf("Failed to create Rancher event router %v", err)
-	}
-
-	err = router.StartWithoutCreate(nil)
-	if err != nil {
-		logrus.Fatalf("Failed to create Rancher event router %v", err)
-	}
+func (lbp *RancherLBProvider) Start() error {
 	return nil
 }
 
-func (lbc *RancherLBProvider) deleteLBStack() error {
-	stack, err := lbc.getStack(lbStackName)
+func (lbp *RancherLBProvider) deleteLBStack() error {
+	stack, err := lbp.getStack(lbStackName)
 	if err != nil {
 		return err
 	}
 	if stack == nil {
 		logrus.Infof("System LB stack [%s] doesn't exist, no need to cleanup", lbStackName)
 	}
-	_, err = lbc.client.Environment.ActionRemove(stack)
+	_, err = lbp.client.Environment.ActionRemove(stack)
 	return err
 }
 
-func (lbc *RancherLBProvider) deleteLBService(name string) error {
-	stack, err := lbc.getStack(lbStackName)
+func (lbp *RancherLBProvider) deleteLBService(name string) error {
+	stack, err := lbp.getStack(lbStackName)
 	if err != nil {
 		return err
 	}
 	if stack == nil {
 		logrus.Infof("System LB stack [%s] doesn't exist, no need to cleanup LB ", lbStackName)
 	}
-	lb, err := lbc.getLBServiceByName(name)
+	lb, err := lbp.getLBServiceByName(name)
 	if err != nil {
 		return err
 	}
-	_, err = lbc.client.LoadBalancerService.ActionRemove(lb)
+	_, err = lbp.client.LoadBalancerService.ActionRemove(lb)
 	return err
 }
 
-func (lbc *RancherLBProvider) formatLBName(name string) string {
+func (lbp *RancherLBProvider) formatLBName(name string) string {
 	return strings.Replace(name, "/", "-", -1)
 }
 
-func (lbc *RancherLBProvider) GetName() string {
+func (lbp *RancherLBProvider) GetName() string {
 	return "rancher"
 }
 
-func (lbc *RancherLBProvider) GetPublicEndpoint(configName string) string {
+func (lbp *RancherLBProvider) GetPublicEndpoint(configName string) string {
 	epStr := ""
-	lbFmt := lbc.formatLBName(configName)
-	lb, err := lbc.getLBServiceByName(configName)
+	lbFmt := lbp.formatLBName(configName)
+	lb, err := lbp.getLBServiceByName(configName)
 	if err != nil {
 		logrus.Errorf("Failed to find lb service [%s]: %v", lbFmt, err)
 		return epStr
@@ -202,13 +186,13 @@ func convertObject(obj1 interface{}, obj2 interface{}) error {
 
 type waitCallback func(result chan<- interface{}) (bool, error)
 
-func (lbc *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, error) {
+func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = lbStackName
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["external_id"] = lbStackExternalID
 
-	envs, err := lbc.client.Environment.List(opts)
+	envs, err := lbp.client.Environment.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", lbStackName, err)
 	}
@@ -222,19 +206,19 @@ func (lbc *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, err
 		ExternalId: lbStackExternalID,
 	}
 
-	env, err = lbc.client.Environment.Create(env)
+	env, err = lbp.client.Environment.Create(env)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't create stack [%s] for kubernetes LB ingress. Error: %#v", lbStackName, err)
 	}
 	return env, nil
 }
 
-func (lbc *RancherLBProvider) getStack(name string) (*client.Environment, error) {
+func (lbp *RancherLBProvider) getStack(name string) (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
 
-	envs, err := lbc.client.Environment.List(opts)
+	envs, err := lbp.client.Environment.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", name, err)
 	}
@@ -245,18 +229,18 @@ func (lbc *RancherLBProvider) getStack(name string) (*client.Environment, error)
 	return nil, nil
 }
 
-func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancerService, error) {
-	stack, err := lbc.getOrCreateSystemStack()
+func (lbp *RancherLBProvider) createLBService(name string) (*client.LoadBalancerService, error) {
+	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
 	}
-	lb, err := lbc.getLBServiceByName(name)
+	lb, err := lbp.getLBServiceByName(name)
 	if err != nil {
 		return nil, err
 	}
 	if lb != nil {
 		if lb.State != "active" {
-			return lbc.activateLBService(lb)
+			return lbp.activateLBService(lb)
 		}
 		return lb, nil
 	}
@@ -273,33 +257,33 @@ func (lbc *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 		},
 	}
 
-	lb, err = lbc.client.LoadBalancerService.Create(lb)
+	lb, err = lbp.client.LoadBalancerService.Create(lb)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to create LB [%s]. Error: %#v", name, err)
 	}
 
-	return lbc.activateLBService(lb)
+	return lbp.activateLBService(lb)
 }
 
-func (lbc *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *lbconfig.LoadBalancerConfig) error {
 	if len(lbConfig.FrontendServices) == 0 {
 		logrus.Infof("Config [%s] doesn't have any rules defined", lbConfig.Name)
 		return nil
 	}
-	actionChannel := lbc.waitForLBAction("setservicelinks", lb)
+	actionChannel := lbp.waitForLBAction("setservicelinks", lb)
 	_, ok := <-actionChannel
 	if !ok {
 		return fmt.Errorf("Couldn't call setservicelinks on LB [%s]", lb.Name)
 	}
 
-	lb, err := lbc.reloadLBService(lb)
+	lb, err := lbp.reloadLBService(lb)
 	if err != nil {
 		return err
 	}
 	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
 
 	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
-		svc, err := lbc.getKubernetesServiceByName(bcknd.Name, lbConfig.Namespace)
+		svc, err := lbp.getKubernetesServiceByName(bcknd.Name, lbConfig.Namespace)
 		if err != nil {
 			return err
 		}
@@ -327,60 +311,60 @@ func (lbc *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lb
 
 	}
 
-	_, err = lbc.client.LoadBalancerService.ActionSetservicelinks(lb, serviceLinks)
+	_, err = lbp.client.LoadBalancerService.ActionSetservicelinks(lb, serviceLinks)
 	if err != nil {
 		return fmt.Errorf("Failed to set service links for lb [%s]. Error: %#v", lb.Name, err)
 	}
 	return nil
 }
 
-func (lbc *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
+func (lbp *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
 	// activate LB
-	actionChannel := lbc.waitForLBAction("activate", lb)
+	actionChannel := lbp.waitForLBAction("activate", lb)
 	_, ok := <-actionChannel
 	if !ok {
 		return nil, fmt.Errorf("Couldn't call activate on LB [%s]", lb.Name)
 	}
-	lb, err := lbc.reloadLBService(lb)
+	lb, err := lbp.reloadLBService(lb)
 	if err != nil {
 		return nil, err
 	}
-	_, err = lbc.client.LoadBalancerService.ActionActivate(lb)
+	_, err = lbp.client.LoadBalancerService.ActionActivate(lb)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating LB [%s]. Couldn't activate LB. Error: %#v", lb.Name, err)
 	}
 
 	// wait for state to become active
-	stateCh := lbc.waitForLBAction("deactivate", lb)
+	stateCh := lbp.waitForLBAction("deactivate", lb)
 	_, ok = <-stateCh
 	if !ok {
 		return nil, fmt.Errorf("Timed out waiting for LB to activate %s", lb.Name)
 	}
 
 	// wait for LB public endpoints
-	lb, err = lbc.reloadLBService(lb)
+	lb, err = lbp.reloadLBService(lb)
 	if err != nil {
 		return nil, err
 	}
-	epChannel := lbc.waitForLBPublicEndpoints(1, lb)
+	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
 	_, ok = <-epChannel
 	if !ok {
 		return nil, fmt.Errorf("Couldn't get publicEndpoints for LB [%s]", lb.Name)
 	}
 
-	return lbc.reloadLBService(lb)
+	return lbp.reloadLBService(lb)
 }
 
-func (lbc *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
-	lb, err := lbc.client.LoadBalancerService.ById(lb.Id)
+func (lbp *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
+	lb, err := lbp.client.LoadBalancerService.ById(lb.Id)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't reload LB [%s]. Error: %#v", lb.Name, err)
 	}
 	return lb, nil
 }
 
-func (lbc *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {
-	stack, err := lbc.getOrCreateSystemStack()
+func (lbp *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {
+	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +373,7 @@ func (lbc *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalan
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["environment_id"] = stack.Id
-	lbs, err := lbc.client.LoadBalancerService.List(opts)
+	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get LB service by name [%s]. Error: %#v", name, err)
 	}
@@ -401,8 +385,8 @@ func (lbc *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalan
 	return &lbs.Data[0], nil
 }
 
-func (lbc *RancherLBProvider) getKubernetesServiceByName(name string, stackName string) (*client.KubernetesService, error) {
-	stack, err := lbc.getStack(stackName)
+func (lbp *RancherLBProvider) getKubernetesServiceByName(name string, stackName string) (*client.KubernetesService, error) {
+	stack, err := lbp.getStack(stackName)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +399,7 @@ func (lbc *RancherLBProvider) getKubernetesServiceByName(name string, stackName 
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["environment_id"] = stack.Id
-	lbs, err := lbc.client.KubernetesService.List(opts)
+	lbs, err := lbp.client.KubernetesService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get service by name [%s]. Error: %#v", name, err)
 	}
@@ -427,9 +411,9 @@ func (lbc *RancherLBProvider) getKubernetesServiceByName(name string, stackName 
 	return &lbs.Data[0], nil
 }
 
-func (lbc *RancherLBProvider) waitForLBAction(action string, lb *client.LoadBalancerService) <-chan interface{} {
+func (lbp *RancherLBProvider) waitForLBAction(action string, lb *client.LoadBalancerService) <-chan interface{} {
 	cb := func(result chan<- interface{}) (bool, error) {
-		lb, err := lbc.reloadLBService(lb)
+		lb, err := lbp.reloadLBService(lb)
 		if err != nil {
 			return false, err
 		}
@@ -439,12 +423,12 @@ func (lbc *RancherLBProvider) waitForLBAction(action string, lb *client.LoadBala
 		}
 		return false, nil
 	}
-	return lbc.waitForCondition(action, cb)
+	return lbp.waitForCondition(action, cb)
 }
 
-func (lbc *RancherLBProvider) waitForLBPublicEndpoints(count int, lb *client.LoadBalancerService) <-chan interface{} {
+func (lbp *RancherLBProvider) waitForLBPublicEndpoints(count int, lb *client.LoadBalancerService) <-chan interface{} {
 	cb := func(result chan<- interface{}) (bool, error) {
-		lb, err := lbc.reloadLBService(lb)
+		lb, err := lbp.reloadLBService(lb)
 		if err != nil {
 			return false, err
 		}
@@ -454,10 +438,10 @@ func (lbc *RancherLBProvider) waitForLBPublicEndpoints(count int, lb *client.Loa
 		}
 		return false, nil
 	}
-	return lbc.waitForCondition("publicEndpoints", cb)
+	return lbp.waitForCondition("publicEndpoints", cb)
 }
 
-func (lbc *RancherLBProvider) waitForCondition(condition string, callback waitCallback) <-chan interface{} {
+func (lbp *RancherLBProvider) waitForCondition(condition string, callback waitCallback) <-chan interface{} {
 	ready := make(chan interface{}, 0)
 	go func() {
 		sleep := 2
@@ -477,14 +461,4 @@ func (lbc *RancherLBProvider) waitForCondition(condition string, callback waitCa
 		logrus.Errorf("Timed out waiting for condition %s.", condition)
 	}()
 	return ready
-}
-
-func updateIngressAddressHandler(event *events.Event, apiClient *client.RancherClient) (err error) {
-	logrus.Infof("Processing event [%s] for resource type [%s]", event.Name, event.ResourceType)
-	return nil
-}
-
-func pingHandler(event *events.Event, apiClient *client.RancherClient) (err error) {
-	logrus.Infof("Processing event [%s] for resource type [%s]", event.Name, event.ResourceType)
-	return nil
 }
