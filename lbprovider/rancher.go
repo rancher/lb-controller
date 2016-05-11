@@ -71,6 +71,15 @@ func init() {
 	RegisterProvider(lbp.GetName(), lbp)
 }
 
+func (lbp *RancherLBProvider) IsHealthy() bool {
+	_, err := lbp.client.Environment.List(client.NewListOpts())
+	if err != nil {
+		logrus.Errorf("Health check failed: unable to reach Rancher. Error: %#v", err)
+		return false
+	}
+	return true
+}
+
 func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
 	unlocker := locks.Lock(lbConfig.Name)
 	if unlocker == nil {

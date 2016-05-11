@@ -38,6 +38,8 @@ func main() {
 
 	go handleSigterm(lbc, lbp)
 
+	go startHealthcheck()
+
 	lbc.Run(lbp)
 }
 

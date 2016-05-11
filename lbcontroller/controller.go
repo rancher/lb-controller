@@ -11,6 +11,7 @@ type LBController interface {
 	Run(lbProvider lbprovider.LBProvider)
 	Stop() error
 	GetLBConfigs() []*lbconfig.LoadBalancerConfig
+	IsHealthy() bool
 }
 
 var (

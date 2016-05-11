@@ -144,3 +144,9 @@ import:
 
 - package: github.com/golang/glog
   version: 44145f04b68cf362d9c4df2182967c2275eaefed
+
+- package: github.com/gorilla/mux
+  version: 26a6070f849969ba72b72256e9f14cf519751690
+
+- package: github.com/gorilla/context
+  version: 1c83b3eabd45b6d76072b66b746c20815fb2872d

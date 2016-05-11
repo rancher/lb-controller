@@ -15,6 +15,7 @@ type LBProvider interface {
 	CleanupConfig(configName string) error
 	Run(syncEndpointsQueue *utils.TaskQueue)
 	Stop() error
+	IsHealthy() bool
 }
 
 var (

@@ -531,3 +531,12 @@ func (lbc *loadBalancerController) removeFromIngress() {
 func (lbc *loadBalancerController) GetName() string {
 	return "kubernetes"
 }
+
+func (lbc *loadBalancerController) IsHealthy() bool {
+	_, err := lbc.client.Extensions().Ingress(api.NamespaceAll).List(api.ListOptions{})
+	if err != nil {
+		logrus.Errorf("Health check failed: unable to reach Kubernetes. Error: %#v", err)
+		return false
+	}
+	return true
+}
