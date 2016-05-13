@@ -79,5 +79,6 @@ test      -                        104.154.107.202, 104.154.107.203  // hosts ip
 * Add TLS support
 * Support for TCP Load balancer
 * Support for custom public port. Today only standard http port 80 is supported as a public port, and we want to make it configurable.
+* Support for Stickiness policies.
 
 
