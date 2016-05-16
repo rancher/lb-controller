@@ -20,8 +20,8 @@ type PublicEndpoint struct {
 }
 
 const (
-	controllerStackName        string = "kubernetes-ingress-controllers"
-	controllerExternalIDPrefix string = "kubernetes-ingress-controllers://"
+	controllerStackName        string = "kubernetes-ingress-lbs"
+	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
 )
 
 type RancherLBProvider struct {
