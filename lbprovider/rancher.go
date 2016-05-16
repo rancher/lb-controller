@@ -104,11 +104,22 @@ func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 
 	defer unlocker.Unlock()
 
+	// 1.create serivce
 	lb, err := lbp.createLBService(lbConfig)
 	if err != nil {
 		return err
 	}
-	return lbp.setServiceLinks(lb, lbConfig)
+
+	// 2.update with certificate if needed
+	if err = lbp.updateCertificate(lbConfig, lb); err != nil {
+		return err
+	}
+
+	// 3.set service links
+	if err = lbp.setServiceLinks(lb, lbConfig); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (lbp *RancherLBProvider) CleanupConfig(name string) error {
@@ -284,6 +295,38 @@ func (lbp *RancherLBProvider) getStack(name string) (*client.Environment, error)
 	return nil, nil
 }
 
+func (lbp *RancherLBProvider) createCertificate(cert *lbconfig.Certificate) (*client.Certificate, error) {
+	rancherCert := &client.Certificate{
+		Name: cert.Name,
+		Key:  cert.Key,
+		Cert: cert.Cert,
+	}
+
+	rancherCert, err := lbp.client.Certificate.Create(rancherCert)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to create certificate [%s]. Error: %#v", cert.Name, err)
+	}
+	return rancherCert, nil
+}
+
+func (lbp *RancherLBProvider) updateCertificate(lbConfig *lbconfig.LoadBalancerConfig, lb *client.LoadBalancerService) error {
+	rancherCertID, err := lbp.getRancherCertID(lbConfig)
+	if err != nil {
+		return err
+	}
+	if lb.DefaultCertificateId != rancherCertID {
+		lb.DefaultCertificateId = rancherCertID
+		logrus.Infof("Updating Rancher LB with the new cert [%s] ", rancherCertID)
+		_, err = lbp.client.LoadBalancerService.Update(lb, map[string]interface{}{
+			"defaultCertificateId": rancherCertID,
+		})
+		if err != nil {
+			return fmt.Errorf("Failed to update lb [%s] with a new certificate [%s]. Error: %#v", lb.Name, rancherCertID, err)
+		}
+	}
+	return nil
+}
+
 func (lbp *RancherLBProvider) createLBService(lbConfig *lbconfig.LoadBalancerConfig) (*client.LoadBalancerService, error) {
 	name := lbp.formatLBName(lbConfig.Name)
 	stack, err := lbp.getOrCreateSystemStack()
@@ -301,28 +344,39 @@ func (lbp *RancherLBProvider) createLBService(lbConfig *lbconfig.LoadBalancerCon
 		return lb, nil
 	}
 
-	if len(lbConfig.FrontendServices) == 0 {
-		logrus.Infof("LB config [%s] have 0 frondends", lbConfig.Name)
-		return nil, nil
+	// private port will be overritten by ports
+	// in hostname routing rules
+	lbPorts := []string{}
+	labels := make(map[string]interface{})
+	for _, lbFrontend := range lbConfig.FrontendServices {
+		defaultBackend := lbp.getDefaultBackend(lbFrontend)
+		publicPort := strconv.Itoa(lbFrontend.Port)
+		privatePort := strconv.Itoa(lbFrontend.Port)
+		if defaultBackend != nil {
+			privatePort = strconv.Itoa(defaultBackend.Port)
+		}
+		lbPorts = append(lbPorts, fmt.Sprintf("%v:%v", publicPort, privatePort))
+		if lbFrontend.DefaultCert != nil {
+			labels["io.rancher.loadbalancer.ssl.ports"] = publicPort
+		}
 	}
 
-	// TODO: support multiple ports
-	lbFrontend := lbConfig.FrontendServices[0]
-	publicPort := "80"
-	privatePort := "80"
-	defaultBackend := lbp.getDefaultBackend(lbFrontend)
-	if defaultBackend != nil {
-		privatePort = strconv.Itoa(defaultBackend.Port)
+	// get certificate from rancher
+	rancherCertID, err := lbp.getRancherCertID(lbConfig)
+	if err != nil {
+		return nil, err
 	}
-	lbPorts := []string{fmt.Sprintf("%v:%v", publicPort, privatePort)}
 
 	lb = &client.LoadBalancerService{
 		Name:          name,
 		EnvironmentId: stack.Id,
 		LaunchConfig: &client.LaunchConfig{
-			Ports: lbPorts,
+			Ports:  lbPorts,
+			Labels: labels,
 		},
-		ExternalId: fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
+		ExternalId:           fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
+		DefaultCertificateId: rancherCertID,
+		Scale:                int64(lbConfig.Scale),
 	}
 
 	lb, err = lbp.client.LoadBalancerService.Create(lb)
@@ -333,6 +387,35 @@ func (lbp *RancherLBProvider) createLBService(lbConfig *lbconfig.LoadBalancerCon
 	return lbp.activateLBService(lb)
 }
 
+func (lbp *RancherLBProvider) getRancherCertID(lbConfig *lbconfig.LoadBalancerConfig) (string, error) {
+	var defaultCert *lbconfig.Certificate
+	for _, lbFrontend := range lbConfig.FrontendServices {
+		if lbFrontend.DefaultCert != nil {
+			defaultCert = lbFrontend.DefaultCert
+		}
+	}
+	// get certificate
+	var rancherCertID string
+	if defaultCert != nil {
+		rancherCert, err := lbp.getCertificate(defaultCert.Name)
+		if err != nil {
+			return "", fmt.Errorf("Failed to list certificate by name [%s]: %v", defaultCert.Name, err)
+		}
+		if rancherCert == nil {
+			if defaultCert.Fetch {
+				return "", fmt.Errorf("Failed to fetch certificate by name [%s]", defaultCert.Name)
+			}
+			// create certificate
+			rancherCert, err = lbp.createCertificate(defaultCert)
+			if err != nil {
+				return "", fmt.Errorf("Failed to create certificate [%s]: %v", defaultCert.Name, err)
+			}
+		}
+		rancherCertID = rancherCert.Id
+	}
+	return rancherCertID, nil
+}
+
 func (lbp *RancherLBProvider) getDefaultBackend(frontend *lbconfig.FrontendService) *lbconfig.BackendService {
 	for _, backend := range frontend.BackendServices {
 		if backend.Path == "" && backend.Host == "" {
@@ -340,6 +423,22 @@ func (lbp *RancherLBProvider) getDefaultBackend(frontend *lbconfig.FrontendServi
 		}
 	}
 	return nil
+}
+
+func (lbp *RancherLBProvider) getCertificate(certName string) (*client.Certificate, error) {
+	opts := client.NewListOpts()
+	opts.Filters["name"] = certName
+	opts.Filters["removed_null"] = "1"
+
+	certs, err := lbp.client.Certificate.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("Coudln't get certificate by name [%s]. Error: %#v", certName, err)
+	}
+
+	if len(certs.Data) >= 1 {
+		return &certs.Data[0], nil
+	}
+	return nil, nil
 }
 
 func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *lbconfig.LoadBalancerConfig) error {
@@ -371,7 +470,6 @@ func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lb
 		var port string
 		bckndPort := strconv.Itoa(bcknd.Port)
 		if bcknd.Host != "" && bcknd.Path != "" {
-			// public port is always 80
 			port = fmt.Sprintf("%s%s=%s", bcknd.Host, bcknd.Path, bckndPort)
 		} else if bcknd.Host != "" {
 			port = fmt.Sprintf("%s=%s", bcknd.Host, bckndPort)
@@ -400,7 +498,7 @@ func (lbp *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 	actionChannel := lbp.waitForLBAction("activate", lb)
 	_, ok := <-actionChannel
 	if !ok {
-		return nil, fmt.Errorf("Couldn't call activate on LB [%s]", lb.Name)
+		return nil, fmt.Errorf("Couldn't call activate on LB [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
 	}
 	lb, err := lbp.reloadLBService(lb)
 	if err != nil {
@@ -415,7 +513,7 @@ func (lbp *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 	stateCh := lbp.waitForLBAction("deactivate", lb)
 	_, ok = <-stateCh
 	if !ok {
-		return nil, fmt.Errorf("Timed out waiting for LB to activate [%s]. Transitioning state: [%v]", lb.Name, lb.TransitioningMessage)
+		return nil, fmt.Errorf("Timed out waiting for LB to activate [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
 	}
 
 	// wait for LB public endpoints

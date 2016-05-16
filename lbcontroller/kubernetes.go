@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/watch"
 	"os"
+	"strconv"
 )
 
 var (
@@ -358,6 +359,19 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 				}
 			}
 		}
+		var cert *lbconfig.Certificate
+		for _, tls := range ing.Spec.TLS {
+			var err error
+			secretName := tls.SecretName
+			cert, err = lbc.getCertificate(secretName, ing.Namespace)
+			if err != nil {
+				logrus.Errorf("Failed to fetch secret by name [%s]: %v", secretName, err)
+			} else {
+				//TODO - add SNI support
+				//today we get only first certificate
+				break
+			}
+		}
 
 		for _, rule := range ing.Spec.Rules {
 			logrus.Infof("Processing ingress rule %v", rule)
@@ -379,22 +393,76 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 				}
 			}
 		}
-		//FIXME - add second frontend service for https port
 		frontEndServices := []*lbconfig.FrontendService{}
-		frontEndService := &lbconfig.FrontendService{
-			Name:            ing.Name,
-			Port:            80,
+
+		// populate http service
+		frontendHTTPPort := 80
+		params := ing.ObjectMeta.GetAnnotations()
+		if portStr, ok := params["http.port"]; ok {
+			frontendHTTPPort, _ = strconv.Atoi(portStr)
+		}
+		frontEndHTTPService := &lbconfig.FrontendService{
+			Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
+			Port:            frontendHTTPPort,
 			BackendServices: backends,
 		}
-		frontEndServices = append(frontEndServices, frontEndService)
+		frontEndServices = append(frontEndServices, frontEndHTTPService)
+
+		// populate https service
+		if cert != nil {
+			frontendHTTPSPort := 443
+			if portStr, ok := params["http.port"]; ok {
+				frontendHTTPSPort, _ = strconv.Atoi(portStr)
+			}
+			frontEndHTTPSService := &lbconfig.FrontendService{
+				Name:            fmt.Sprintf("%v_%v", ing.Name, "https"),
+				Port:            frontendHTTPSPort,
+				BackendServices: backends,
+				DefaultCert:     cert,
+			}
+			frontEndServices = append(frontEndServices, frontEndHTTPSService)
+		}
+		scale := 0
+		if scaleStr, ok := params["scale"]; ok {
+			scale, _ = strconv.Atoi(scaleStr)
+		}
 		lbConfig := &lbconfig.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
+			Scale:            scale,
 			FrontendServices: frontEndServices,
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
 	}
 
 	return lbConfigs
+}
+
+func (lbc *loadBalancerController) getCertificate(secretName string, namespace string) (*lbconfig.Certificate, error) {
+	fetch := false
+	var cert, key string
+	secret, err := lbc.client.Secrets(namespace).Get(secretName)
+	if err != nil {
+		logrus.Infof("Cert [%s] needs to be fetched: %v", secretName, err)
+		fetch = true
+	} else {
+		certData, ok := secret.Data[api.TLSCertKey]
+		if !ok {
+			return nil, fmt.Errorf("Secret %v has no cert", secretName)
+		}
+		keyData, ok := secret.Data[api.TLSPrivateKeyKey]
+		if !ok {
+			return nil, fmt.Errorf("Secret %v has no private key", secretName)
+		}
+		cert = string(certData)
+		key = string(keyData)
+	}
+
+	return &lbconfig.Certificate{
+		Name:  secretName,
+		Cert:  cert,
+		Key:   key,
+		Fetch: fetch,
+	}, nil
 }
 
 func (lbc *loadBalancerController) getServiceBackend(svc *api.Service, port int, path string, host string) *lbconfig.BackendService {

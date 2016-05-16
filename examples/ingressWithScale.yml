@@ -3,7 +3,7 @@ kind: Ingress
 metadata:
   name: test
   annotations: 
-    http.port: "99"
+    scale: "2"
 spec:
   rules:
   - host: foo.bar.com
