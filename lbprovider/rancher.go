@@ -113,12 +113,6 @@ func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 }
 
 func (lbp *RancherLBProvider) CleanupConfig(name string) error {
-	unlocker, err := lbp.lockLB(name)
-	if err != nil {
-		return err
-	}
-
-	defer unlocker.Unlock()
 	fmtName := lbp.formatLBName(name)
 	logrus.Infof("Deleting lb service [%s]", fmtName)
 
