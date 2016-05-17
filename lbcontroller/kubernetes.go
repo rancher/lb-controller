@@ -97,7 +97,6 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		DeleteFunc: func(obj interface{}) {
 			upIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-			lbc.syncQueue.Enqueue(obj)
 			lbc.cleanupQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {

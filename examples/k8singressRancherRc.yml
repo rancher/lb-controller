@@ -21,9 +21,9 @@ spec:
           - name: CATTLE_URL
             value: "http://10.0.2.2:8080/v1"
           - name: CATTLE_ACCESS_KEY
-            value: "41C575A65B3FFA8E56D7"
+            value: "15E5B9AB75486D1817C9"
           - name: CATTLE_SECRET_KEY
-            value: "38ewXco3uagrLn8QkfwCuS8KUVvkXR75Zh6J8QeV"
+            value: "uJJh8ivzXqFoS1mcvXqhz7zV2tLLKbw5Ds8bEBR7"
           - name: KUBERNETES_URL
             value: "http://master"
         args:
