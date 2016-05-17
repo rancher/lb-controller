@@ -20,8 +20,8 @@ type PublicEndpoint struct {
 }
 
 const (
-	controllerStackName        string = "kubernetes-ingress-controllers"
-	controllerExternalIDPrefix string = "kubernetes-ingress-controllers://"
+	controllerStackName        string = "kubernetes-ingress-lbs"
+	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
 )
 
 type RancherLBProvider struct {
@@ -80,12 +80,28 @@ func (lbp *RancherLBProvider) IsHealthy() bool {
 	return true
 }
 
-func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
-	unlocker := locks.Lock(lbConfig.Name)
-	if unlocker == nil {
-		logrus.Infof("LB [%s] locked. Dropping event", lbConfig.Name)
-		return nil
+func (lbp *RancherLBProvider) lockLB(lbName string) (locks.Unlocker, error) {
+	var unlocker locks.Unlocker
+	for i := 0; i < 10; i++ {
+		unlocker = locks.Lock(lbName)
+		if unlocker != nil {
+			break
+		}
+		time.Sleep(time.Second * time.Duration(1))
 	}
+
+	if unlocker == nil {
+		return nil, fmt.Errorf("Failed to acquire lock on lb [%s]", lbName)
+	}
+	return unlocker, nil
+}
+
+func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+	unlocker, err := lbp.lockLB(lbConfig.Name)
+	if err != nil {
+		return err
+	}
+
 	defer unlocker.Unlock()
 
 	lb, err := lbp.createLBService(lbp.formatLBName(lbConfig.Name))
@@ -97,11 +113,11 @@ func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 }
 
 func (lbp *RancherLBProvider) CleanupConfig(name string) error {
-	unlocker := locks.Lock(name)
-	if unlocker == nil {
-		logrus.Infof("LB [%s] locked. Dropping event", name)
-		return nil
+	unlocker, err := lbp.lockLB(name)
+	if err != nil {
+		return err
 	}
+
 	defer unlocker.Unlock()
 	fmtName := lbp.formatLBName(name)
 	logrus.Infof("Deleting lb service [%s]", fmtName)

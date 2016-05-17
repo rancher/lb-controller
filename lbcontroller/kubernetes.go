@@ -199,10 +199,15 @@ func (lbc *loadBalancerController) sync(key string) {
 		lbc.syncQueue.Requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
 		return
 	}
+	requeue := false
 	for _, cfg := range lbc.GetLBConfigs() {
 		if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
 			logrus.Errorf("Failed to apply lb config on provider: %v", err)
+			requeue = true
 		}
+	}
+	if requeue {
+		lbc.syncQueue.Requeue(key, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
 	}
 }
 
