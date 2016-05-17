@@ -97,7 +97,6 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		DeleteFunc: func(obj interface{}) {
 			upIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-			lbc.syncQueue.Enqueue(obj)
 			lbc.cleanupQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
@@ -334,13 +333,13 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 }
 
 func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig {
-	backends := []*lbconfig.BackendService{}
 	ings := lbc.ingLister.Store.List()
 	lbConfigs := []*lbconfig.LoadBalancerConfig{}
 	if len(ings) == 0 {
 		return lbConfigs
 	}
 	for _, ingIf := range ings {
+		backends := []*lbconfig.BackendService{}
 		ing := ingIf.(*extensions.Ingress)
 		// process default rule
 		if ing.Spec.Backend != nil {
