@@ -204,26 +204,26 @@ func (lbp *RancherLBProvider) GetPublicEndpoints(configName string) []string {
 		return epStr
 	}
 	if lb == nil {
-		logrus.Errorf("Failed to find LB [%s]", lbFmt)
+		logrus.Infof("LB [%s] is not ready yet, skipping endpoint update", lbFmt)
 		return epStr
 	}
 
 	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
 	_, ok := <-epChannel
 	if !ok {
-		logrus.Errorf("Couldn't get publicEndpoints for LB [%s]", lbFmt)
+		logrus.Infof("Couldn't get publicEndpoints for LB [%s], skipping endpoint update", lbFmt)
 		return epStr
 	}
 
 	lb, err = lbp.reloadLBService(lb)
 	if err != nil {
-		logrus.Errorf("Failed to reload LB [%s]", lbFmt)
+		logrus.Infof("Failed to reload LB [%s], skipping endpoint update", lbFmt)
 		return epStr
 	}
 
 	eps := lb.PublicEndpoints
 	if len(eps) == 0 {
-		logrus.Errorf("No public endpoints found for lb %s", lbFmt)
+		logrus.Infof("No public endpoints found for LB [%s], skipping endpoint update", lbFmt)
 		return epStr
 	}
 
@@ -232,7 +232,7 @@ func (lbp *RancherLBProvider) GetPublicEndpoints(configName string) []string {
 
 		err = convertObject(epObj, &ep)
 		if err != nil {
-			logrus.Errorf("No public endpoints found for lb %v", err)
+			logrus.Errorf("Faield to convert public endpoints for LB [%s], skipping endpoint update %v", lbFmt, err)
 			return epStr
 		}
 		epStr = append(epStr, ep.IPAddress)
