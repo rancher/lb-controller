@@ -104,11 +104,10 @@ func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 
 	defer unlocker.Unlock()
 
-	lb, err := lbp.createLBService(lbp.formatLBName(lbConfig.Name))
+	lb, err := lbp.createLBService(lbConfig)
 	if err != nil {
 		return err
 	}
-	logrus.Infof("Setting service links for service [%s]", lb.Name)
 	return lbp.setServiceLinks(lb, lbConfig)
 }
 
@@ -298,7 +297,8 @@ func (lbp *RancherLBProvider) getStack(name string) (*client.Environment, error)
 	return nil, nil
 }
 
-func (lbp *RancherLBProvider) createLBService(name string) (*client.LoadBalancerService, error) {
+func (lbp *RancherLBProvider) createLBService(lbConfig *lbconfig.LoadBalancerConfig) (*client.LoadBalancerService, error) {
+	name := lbp.formatLBName(lbConfig.Name)
 	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
@@ -314,9 +314,20 @@ func (lbp *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 		return lb, nil
 	}
 
-	// private port 80 will be overritten by ports
-	// in hostname routing rules
-	lbPorts := []string{"80:80"}
+	if len(lbConfig.FrontendServices) == 0 {
+		logrus.Infof("LB config [%s] have 0 frondends", lbConfig.Name)
+		return nil, nil
+	}
+
+	// TODO: support multiple ports
+	lbFrontend := lbConfig.FrontendServices[0]
+	publicPort := "80"
+	privatePort := "80"
+	defaultBackend := lbp.getDefaultBackend(lbFrontend)
+	if defaultBackend != nil {
+		privatePort = strconv.Itoa(defaultBackend.Port)
+	}
+	lbPorts := []string{fmt.Sprintf("%v:%v", publicPort, privatePort)}
 
 	lb = &client.LoadBalancerService{
 		Name:          name,
@@ -333,6 +344,15 @@ func (lbp *RancherLBProvider) createLBService(name string) (*client.LoadBalancer
 	}
 
 	return lbp.activateLBService(lb)
+}
+
+func (lbp *RancherLBProvider) getDefaultBackend(frontend *lbconfig.FrontendService) *lbconfig.BackendService {
+	for _, backend := range frontend.BackendServices {
+		if backend.Path == "" && backend.Host == "" {
+			return backend
+		}
+	}
+	return nil
 }
 
 func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *lbconfig.LoadBalancerConfig) error {
