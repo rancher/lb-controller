@@ -64,6 +64,8 @@ Ingress controller with Kubernetes/Rancher support can be deployed as:
 
 # To fix in the future release
 
+* Add TLS support.
+* Support for custom public port. Today only standard http port 80 is supported as a public port, and we want to make it configurable.
 * Horizontal scaling for Rancher LB service. Today it gets deployed with scale=1 (which is equal to 1 public endnpoint). We want to make scale manageable as kubernetes ingress allows multiple IPs in the ingress Address:
 
 ```
@@ -74,11 +76,6 @@ test      -                        104.154.107.202, 104.154.107.203  // hosts ip
           /foo           nginx-service:80
 
 ```
-
-* Integration with Route53 provider. LB service FQDN populated by Rancher Route53 service, will be propagated as an entry point for the ingress.
-* Add TLS support
+* Support for Stickiness policies
 * Support for TCP Load balancer
-* Support for custom public port. Today only standard http port 80 is supported as a public port, and we want to make it configurable.
-* Support for Stickiness policies.
-
-
+* Possible integration with Route53 provider. LB service FQDN populated by Rancher Route53 service, will be propagated as an entry point for the ingress.
