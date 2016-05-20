@@ -122,8 +122,7 @@ func (lbp *RancherLBProvider) Stop() error {
 	close(lbp.stopCh)
 	logrus.Infof("shutting down syncEndpointsQueue")
 	lbp.syncEndpointsQueue.Shutdown()
-	logrus.Infof("Deleting ingress controller stack [%s]", controllerStackName)
-	return lbp.deleteLBStack()
+	return nil
 }
 
 func (lbp *RancherLBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
@@ -152,18 +151,6 @@ func (lbp *RancherLBProvider) syncupEndpoints() error {
 			lbp.syncEndpointsQueue.Enqueue(fmt.Sprintf("%v/%v", splitted[0], splitted[1]))
 		}
 	}
-}
-
-func (lbp *RancherLBProvider) deleteLBStack() error {
-	stack, err := lbp.getStack(controllerStackName)
-	if err != nil {
-		return err
-	}
-	if stack == nil {
-		logrus.Infof("Ingress controller stack [%s] doesn't exist, no need to cleanup", controllerStackName)
-	}
-	_, err = lbp.client.Environment.ActionRemove(stack)
-	return err
 }
 
 func (lbp *RancherLBProvider) deleteLBService(name string) error {
