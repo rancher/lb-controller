@@ -1,4 +1,4 @@
-package lbconfig
+package config
 
 type BackendService struct {
 	Namespace string
@@ -16,6 +16,7 @@ type Endpoint struct {
 }
 
 type FrontendService struct {
+	DefaultCert     *Certificate
 	Name            string
 	Port            int
 	BackendServices []*BackendService
@@ -24,5 +25,13 @@ type FrontendService struct {
 type LoadBalancerConfig struct {
 	Name             string
 	Namespace        string
+	Scale            int
 	FrontendServices []*FrontendService
+}
+
+type Certificate struct {
+	Name  string
+	Cert  string
+	Key   string
+	Fetch bool
 }

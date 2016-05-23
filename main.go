@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"github.com/Sirupsen/logrus"
-	"github.com/rancher/ingress-controller/lbcontroller"
-	"github.com/rancher/ingress-controller/lbprovider"
+	"github.com/rancher/ingress-controller/controller"
+	"github.com/rancher/ingress-controller/provider"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,17 +14,17 @@ var (
 	lbControllerName = flag.String("lb-controller", "kubernetes", "Ingress controller name")
 	lbProviderName   = flag.String("lb-provider", "haproxy", "Lb controller name")
 
-	lbc lbcontroller.LBController
-	lbp lbprovider.LBProvider
+	lbc controller.LBController
+	lbp provider.LBProvider
 )
 
 func setEnv() {
 	flag.Parse()
-	lbc = lbcontroller.GetController(*lbControllerName)
+	lbc = controller.GetController(*lbControllerName)
 	if lbc == nil {
 		logrus.Fatalf("Unable to find controller by name %s", *lbControllerName)
 	}
-	lbp = lbprovider.GetProvider(*lbProviderName)
+	lbp = provider.GetProvider(*lbProviderName)
 	if lbp == nil {
 		logrus.Fatalf("Unable to find provider by name %s", *lbProviderName)
 	}
@@ -43,7 +43,7 @@ func main() {
 	lbc.Run(lbp)
 }
 
-func handleSigterm(lbc lbcontroller.LBController, lbp lbprovider.LBProvider) {
+func handleSigterm(lbc controller.LBController, lbp provider.LBProvider) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM)
 	<-signalChan

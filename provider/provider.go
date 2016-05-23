@@ -1,15 +1,15 @@
-package lbprovider
+package provider
 
 import (
 	"fmt"
-	"github.com/rancher/ingress-controller/lbconfig"
+	"github.com/rancher/ingress-controller/config"
 	utils "github.com/rancher/ingress-controller/utils"
 )
 
 const Localhost = "localhost"
 
 type LBProvider interface {
-	ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error
+	ApplyConfig(lbConfig *config.LoadBalancerConfig) error
 	GetName() string
 	GetPublicEndpoints(configName string) []string
 	CleanupConfig(configName string) error

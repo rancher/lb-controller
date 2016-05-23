@@ -1,8 +1,8 @@
-package lbprovider
+package provider
 
 import (
 	"fmt"
-	"github.com/rancher/ingress-controller/lbconfig"
+	"github.com/rancher/ingress-controller/config"
 	"io"
 	"os"
 	"os/exec"
@@ -36,7 +36,7 @@ type haproxyConfig struct {
 	Template  string
 }
 
-func (cfg *haproxyConfig) write(lbConfig *lbconfig.LoadBalancerConfig) (err error) {
+func (cfg *haproxyConfig) write(lbConfig *config.LoadBalancerConfig) (err error) {
 	var w io.Writer
 	w, err = os.Create(cfg.Config)
 	if err != nil {
@@ -53,7 +53,7 @@ func (cfg *haproxyConfig) write(lbConfig *lbconfig.LoadBalancerConfig) (err erro
 	return err
 }
 
-func (lbc *HAProxyProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbc *HAProxyProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 	if err := lbc.cfg.write(lbConfig); err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func (lbc *HAProxyProvider) GetName() string {
 }
 
 func (lbc *HAProxyProvider) GetPublicEndpoint(lbName string) string {
-	return Localhost
+	return "127.0.0.1"
 }
 
 func (cfg *haproxyConfig) reload() error {

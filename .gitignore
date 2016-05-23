@@ -3,3 +3,4 @@ Dockerfile.dapper[1-9]*
 bin
 dist
 ingress-controller.tar.gz
+examples/k8singressRancherRc.yml

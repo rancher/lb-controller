@@ -1,16 +1,16 @@
-package lbcontroller
+package controller
 
 import (
 	"fmt"
-	"github.com/rancher/ingress-controller/lbconfig"
-	"github.com/rancher/ingress-controller/lbprovider"
+	"github.com/rancher/ingress-controller/config"
+	"github.com/rancher/ingress-controller/provider"
 )
 
 type LBController interface {
 	GetName() string
-	Run(lbProvider lbprovider.LBProvider)
+	Run(lbProvider provider.LBProvider)
 	Stop() error
-	GetLBConfigs() []*lbconfig.LoadBalancerConfig
+	GetLBConfigs() []*config.LoadBalancerConfig
 	IsHealthy() bool
 }
 

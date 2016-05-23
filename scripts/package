@@ -10,7 +10,7 @@ TAG=${TAG:-${VERSION}}
 REPO=${REPO:-rancher}
 
 cp ../bin/ingress-controller .
-cp ../lbprovider/{haproxy_reload,haproxy_template.cfg} .
+cp ../provider/haproxy/{haproxy_reload,haproxy_template.cfg} .
 
 docker build -t ${REPO}/ingress-controller:${TAG} .
 
