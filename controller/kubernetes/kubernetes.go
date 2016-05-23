@@ -1,4 +1,4 @@
-package lbcontroller
+package kubernetes
 
 import (
 	"fmt"
@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/rancher/ingress-controller/lbconfig"
-	"github.com/rancher/ingress-controller/lbprovider"
+	"github.com/rancher/ingress-controller/config"
+	"github.com/rancher/ingress-controller/controller"
+	"github.com/rancher/ingress-controller/provider"
 	utils "github.com/rancher/ingress-controller/utils"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
@@ -53,7 +54,7 @@ func init() {
 		logrus.Fatalf("%v", err)
 	}
 
-	RegisterController(lbc.GetName(), lbc)
+	controller.RegisterController(lbc.GetName(), lbc)
 }
 
 type loadBalancerController struct {
@@ -71,7 +72,7 @@ type loadBalancerController struct {
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
-	lbProvider     lbprovider.LBProvider
+	lbProvider     provider.LBProvider
 }
 
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string) (*loadBalancerController, error) {
@@ -321,7 +322,7 @@ func (lbc *loadBalancerController) getPublicEndpoints(key string) []string {
 }
 
 // Starts a load balancer controller
-func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
+func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
 	logrus.Infof("starting kubernetes-ingress-controller")
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
@@ -338,14 +339,14 @@ func (lbc *loadBalancerController) Run(provider lbprovider.LBProvider) {
 	logrus.Infof("shutting down kubernetes-ingress-controller")
 }
 
-func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig {
+func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 	ings := lbc.ingLister.Store.List()
-	lbConfigs := []*lbconfig.LoadBalancerConfig{}
+	lbConfigs := []*config.LoadBalancerConfig{}
 	if len(ings) == 0 {
 		return lbConfigs
 	}
 	for _, ingIf := range ings {
-		backends := []*lbconfig.BackendService{}
+		backends := []*config.BackendService{}
 		ing := ingIf.(*extensions.Ingress)
 		// process default rule
 		if ing.Spec.Backend != nil {
@@ -359,7 +360,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 				}
 			}
 		}
-		var cert *lbconfig.Certificate
+		var cert *config.Certificate
 		for _, tls := range ing.Spec.TLS {
 			var err error
 			secretName := tls.SecretName
@@ -393,7 +394,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 				}
 			}
 		}
-		frontEndServices := []*lbconfig.FrontendService{}
+		frontEndServices := []*config.FrontendService{}
 
 		// populate http service
 		frontendHTTPPort := 80
@@ -401,7 +402,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 		if portStr, ok := params["http.port"]; ok {
 			frontendHTTPPort, _ = strconv.Atoi(portStr)
 		}
-		frontEndHTTPService := &lbconfig.FrontendService{
+		frontEndHTTPService := &config.FrontendService{
 			Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
 			Port:            frontendHTTPPort,
 			BackendServices: backends,
@@ -414,7 +415,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 			if portStr, ok := params["http.port"]; ok {
 				frontendHTTPSPort, _ = strconv.Atoi(portStr)
 			}
-			frontEndHTTPSService := &lbconfig.FrontendService{
+			frontEndHTTPSService := &config.FrontendService{
 				Name:            fmt.Sprintf("%v_%v", ing.Name, "https"),
 				Port:            frontendHTTPSPort,
 				BackendServices: backends,
@@ -426,7 +427,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 		if scaleStr, ok := params["scale"]; ok {
 			scale, _ = strconv.Atoi(scaleStr)
 		}
-		lbConfig := &lbconfig.LoadBalancerConfig{
+		lbConfig := &config.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
 			Scale:            scale,
 			FrontendServices: frontEndServices,
@@ -437,7 +438,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*lbconfig.LoadBalancerConfig
 	return lbConfigs
 }
 
-func (lbc *loadBalancerController) getCertificate(secretName string, namespace string) (*lbconfig.Certificate, error) {
+func (lbc *loadBalancerController) getCertificate(secretName string, namespace string) (*config.Certificate, error) {
 	fetch := false
 	var cert, key string
 	secret, err := lbc.client.Secrets(namespace).Get(secretName)
@@ -457,7 +458,7 @@ func (lbc *loadBalancerController) getCertificate(secretName string, namespace s
 		key = string(keyData)
 	}
 
-	return &lbconfig.Certificate{
+	return &config.Certificate{
 		Name:  secretName,
 		Cert:  cert,
 		Key:   key,
@@ -465,15 +466,15 @@ func (lbc *loadBalancerController) getCertificate(secretName string, namespace s
 	}, nil
 }
 
-func (lbc *loadBalancerController) getServiceBackend(svc *api.Service, port int, path string, host string) *lbconfig.BackendService {
-	var backend *lbconfig.BackendService
+func (lbc *loadBalancerController) getServiceBackend(svc *api.Service, port int, path string, host string) *config.BackendService {
+	var backend *config.BackendService
 	for _, servicePort := range svc.Spec.Ports {
 		if servicePort.Port == port {
 			eps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
 			if len(eps) == 0 {
 				continue
 			}
-			backend = &lbconfig.BackendService{
+			backend = &config.BackendService{
 				Name:      svc.Name,
 				Namespace: svc.Namespace,
 				Endpoints: eps,
@@ -506,13 +507,13 @@ func (lbc *loadBalancerController) getService(svcName string, namespace string) 
 }
 
 // getEndpoints returns a list of <endpoint ip> for a given service combination.
-func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []lbconfig.Endpoint {
+func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []config.Endpoint {
 	ep, err := lbc.endpLister.GetServiceEndpoints(s)
 	if err != nil {
 		logrus.Warningf("unexpected error getting service endpoints: %v", err)
-		return []lbconfig.Endpoint{}
+		return []config.Endpoint{}
 	}
-	lbEndpoints := []lbconfig.Endpoint{}
+	lbEndpoints := []config.Endpoint{}
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
 
@@ -537,7 +538,7 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 			}
 
 			for _, epAddress := range ss.Addresses {
-				lbEndpoint := lbconfig.Endpoint{
+				lbEndpoint := config.Endpoint{
 					IP:   epAddress.IP,
 					Port: targetPort,
 				}

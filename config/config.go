@@ -1,4 +1,4 @@
-package lbconfig
+package config
 
 type BackendService struct {
 	Namespace string

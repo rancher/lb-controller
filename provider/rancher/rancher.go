@@ -1,4 +1,4 @@
-package lbprovider
+package rancher
 
 import (
 	"encoding/json"
@@ -6,7 +6,8 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-machine-service/locks"
 	"github.com/rancher/go-rancher/client"
-	"github.com/rancher/ingress-controller/lbconfig"
+	"github.com/rancher/ingress-controller/config"
+	"github.com/rancher/ingress-controller/provider"
 	utils "github.com/rancher/ingress-controller/utils"
 	"os"
 	"strconv"
@@ -24,7 +25,7 @@ const (
 	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
 )
 
-type RancherLBProvider struct {
+type LBProvider struct {
 	client             *client.RancherClient
 	opts               *client.ClientOpts
 	syncEndpointsQueue *utils.TaskQueue
@@ -62,16 +63,16 @@ func init() {
 		logrus.Fatalf("Failed to create Rancher client %v", err)
 	}
 
-	lbp := &RancherLBProvider{
+	lbp := &LBProvider{
 		client: client,
 		opts:   opts,
 		stopCh: make(chan struct{}),
 	}
 
-	RegisterProvider(lbp.GetName(), lbp)
+	provider.RegisterProvider(lbp.GetName(), lbp)
 }
 
-func (lbp *RancherLBProvider) IsHealthy() bool {
+func (lbp *LBProvider) IsHealthy() bool {
 	_, err := lbp.client.Environment.List(client.NewListOpts())
 	if err != nil {
 		logrus.Errorf("Health check failed: unable to reach Rancher. Error: %#v", err)
@@ -80,7 +81,7 @@ func (lbp *RancherLBProvider) IsHealthy() bool {
 	return true
 }
 
-func (lbp *RancherLBProvider) lockLB(lbName string) (locks.Unlocker, error) {
+func (lbp *LBProvider) lockLB(lbName string) (locks.Unlocker, error) {
 	var unlocker locks.Unlocker
 	for i := 0; i < 10; i++ {
 		unlocker = locks.Lock(lbName)
@@ -96,7 +97,7 @@ func (lbp *RancherLBProvider) lockLB(lbName string) (locks.Unlocker, error) {
 	return unlocker, nil
 }
 
-func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbp *LBProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 	unlocker, err := lbp.lockLB(lbConfig.Name)
 	if err != nil {
 		return err
@@ -122,21 +123,21 @@ func (lbp *RancherLBProvider) ApplyConfig(lbConfig *lbconfig.LoadBalancerConfig)
 	return nil
 }
 
-func (lbp *RancherLBProvider) CleanupConfig(name string) error {
+func (lbp *LBProvider) CleanupConfig(name string) error {
 	fmtName := lbp.formatLBName(name)
 	logrus.Infof("Deleting lb service [%s]", fmtName)
 
 	return lbp.deleteLBService(fmtName)
 }
 
-func (lbp *RancherLBProvider) Stop() error {
+func (lbp *LBProvider) Stop() error {
 	close(lbp.stopCh)
 	logrus.Infof("shutting down syncEndpointsQueue")
 	lbp.syncEndpointsQueue.Shutdown()
 	return nil
 }
 
-func (lbp *RancherLBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
+func (lbp *LBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
 	lbp.syncEndpointsQueue = syncEndpointsQueue
 	go lbp.syncEndpointsQueue.Run(time.Second, lbp.stopCh)
 
@@ -146,7 +147,7 @@ func (lbp *RancherLBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
 	logrus.Infof("shutting down kubernetes-ingress-controller")
 }
 
-func (lbp *RancherLBProvider) syncupEndpoints() error {
+func (lbp *LBProvider) syncupEndpoints() error {
 	// FIXME - change to listen to state.change events
 	// figure out why events weren't received by this agent account
 	for {
@@ -164,7 +165,7 @@ func (lbp *RancherLBProvider) syncupEndpoints() error {
 	}
 }
 
-func (lbp *RancherLBProvider) deleteLBService(name string) error {
+func (lbp *LBProvider) deleteLBService(name string) error {
 	stack, err := lbp.getStack(controllerStackName)
 	if err != nil {
 		return err
@@ -184,15 +185,15 @@ func (lbp *RancherLBProvider) deleteLBService(name string) error {
 	return err
 }
 
-func (lbp *RancherLBProvider) formatLBName(name string) string {
+func (lbp *LBProvider) formatLBName(name string) string {
 	return strings.Replace(name, "/", "-", -1)
 }
 
-func (lbp *RancherLBProvider) GetName() string {
+func (lbp *LBProvider) GetName() string {
 	return "rancher"
 }
 
-func (lbp *RancherLBProvider) GetPublicEndpoints(configName string) []string {
+func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 	epStr := []string{}
 	lbFmt := lbp.formatLBName(configName)
 	lb, err := lbp.getLBServiceByName(lbFmt)
@@ -252,7 +253,7 @@ func convertObject(obj1 interface{}, obj2 interface{}) error {
 
 type waitCallback func(result chan<- interface{}) (bool, error)
 
-func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, error) {
+func (lbp *LBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = controllerStackName
 	opts.Filters["removed_null"] = "1"
@@ -279,7 +280,7 @@ func (lbp *RancherLBProvider) getOrCreateSystemStack() (*client.Environment, err
 	return env, nil
 }
 
-func (lbp *RancherLBProvider) getStack(name string) (*client.Environment, error) {
+func (lbp *LBProvider) getStack(name string) (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
@@ -295,7 +296,7 @@ func (lbp *RancherLBProvider) getStack(name string) (*client.Environment, error)
 	return nil, nil
 }
 
-func (lbp *RancherLBProvider) createCertificate(cert *lbconfig.Certificate) (*client.Certificate, error) {
+func (lbp *LBProvider) createCertificate(cert *config.Certificate) (*client.Certificate, error) {
 	rancherCert := &client.Certificate{
 		Name: cert.Name,
 		Key:  cert.Key,
@@ -309,7 +310,7 @@ func (lbp *RancherLBProvider) createCertificate(cert *lbconfig.Certificate) (*cl
 	return rancherCert, nil
 }
 
-func (lbp *RancherLBProvider) updateCertificate(lbConfig *lbconfig.LoadBalancerConfig, lb *client.LoadBalancerService) error {
+func (lbp *LBProvider) updateCertificate(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) error {
 	rancherCertID, err := lbp.getRancherCertID(lbConfig)
 	if err != nil {
 		return err
@@ -327,7 +328,7 @@ func (lbp *RancherLBProvider) updateCertificate(lbConfig *lbconfig.LoadBalancerC
 	return nil
 }
 
-func (lbp *RancherLBProvider) createLBService(lbConfig *lbconfig.LoadBalancerConfig) (*client.LoadBalancerService, error) {
+func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*client.LoadBalancerService, error) {
 	name := lbp.formatLBName(lbConfig.Name)
 	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
@@ -387,8 +388,8 @@ func (lbp *RancherLBProvider) createLBService(lbConfig *lbconfig.LoadBalancerCon
 	return lbp.activateLBService(lb)
 }
 
-func (lbp *RancherLBProvider) getRancherCertID(lbConfig *lbconfig.LoadBalancerConfig) (string, error) {
-	var defaultCert *lbconfig.Certificate
+func (lbp *LBProvider) getRancherCertID(lbConfig *config.LoadBalancerConfig) (string, error) {
+	var defaultCert *config.Certificate
 	for _, lbFrontend := range lbConfig.FrontendServices {
 		if lbFrontend.DefaultCert != nil {
 			defaultCert = lbFrontend.DefaultCert
@@ -416,7 +417,7 @@ func (lbp *RancherLBProvider) getRancherCertID(lbConfig *lbconfig.LoadBalancerCo
 	return rancherCertID, nil
 }
 
-func (lbp *RancherLBProvider) getDefaultBackend(frontend *lbconfig.FrontendService) *lbconfig.BackendService {
+func (lbp *LBProvider) getDefaultBackend(frontend *config.FrontendService) *config.BackendService {
 	for _, backend := range frontend.BackendServices {
 		if backend.Path == "" && backend.Host == "" {
 			return backend
@@ -425,7 +426,7 @@ func (lbp *RancherLBProvider) getDefaultBackend(frontend *lbconfig.FrontendServi
 	return nil
 }
 
-func (lbp *RancherLBProvider) getCertificate(certName string) (*client.Certificate, error) {
+func (lbp *LBProvider) getCertificate(certName string) (*client.Certificate, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = certName
 	opts.Filters["removed_null"] = "1"
@@ -441,7 +442,7 @@ func (lbp *RancherLBProvider) getCertificate(certName string) (*client.Certifica
 	return nil, nil
 }
 
-func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *lbconfig.LoadBalancerConfig) error {
+func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *config.LoadBalancerConfig) error {
 	if len(lbConfig.FrontendServices) == 0 {
 		logrus.Infof("Config [%s] doesn't have any rules defined", lbConfig.Name)
 		return nil
@@ -493,7 +494,7 @@ func (lbp *RancherLBProvider) setServiceLinks(lb *client.LoadBalancerService, lb
 	return nil
 }
 
-func (lbp *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
+func (lbp *LBProvider) activateLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
 	// activate LB
 	actionChannel := lbp.waitForLBAction("activate", lb)
 	_, ok := <-actionChannel
@@ -530,7 +531,7 @@ func (lbp *RancherLBProvider) activateLBService(lb *client.LoadBalancerService) 
 	return lbp.reloadLBService(lb)
 }
 
-func (lbp *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
+func (lbp *LBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
 	lb, err := lbp.client.LoadBalancerService.ById(lb.Id)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't reload LB [%s]. Error: %#v", lb.Name, err)
@@ -538,7 +539,7 @@ func (lbp *RancherLBProvider) reloadLBService(lb *client.LoadBalancerService) (*
 	return lb, nil
 }
 
-func (lbp *RancherLBProvider) getAllLBServices() ([]client.LoadBalancerService, error) {
+func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) {
 	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
@@ -554,7 +555,7 @@ func (lbp *RancherLBProvider) getAllLBServices() ([]client.LoadBalancerService, 
 	return lbs.Data, nil
 }
 
-func (lbp *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {
+func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {
 	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
@@ -576,7 +577,7 @@ func (lbp *RancherLBProvider) getLBServiceByName(name string) (*client.LoadBalan
 	return &lbs.Data[0], nil
 }
 
-func (lbp *RancherLBProvider) getKubernetesServiceByName(name string, stackName string) (*client.KubernetesService, error) {
+func (lbp *LBProvider) getKubernetesServiceByName(name string, stackName string) (*client.KubernetesService, error) {
 	stack, err := lbp.getStack(stackName)
 	if err != nil {
 		return nil, err
@@ -602,7 +603,7 @@ func (lbp *RancherLBProvider) getKubernetesServiceByName(name string, stackName 
 	return &lbs.Data[0], nil
 }
 
-func (lbp *RancherLBProvider) waitForLBAction(action string, lb *client.LoadBalancerService) <-chan interface{} {
+func (lbp *LBProvider) waitForLBAction(action string, lb *client.LoadBalancerService) <-chan interface{} {
 	cb := func(result chan<- interface{}) (bool, error) {
 		lb, err := lbp.reloadLBService(lb)
 		if err != nil {
@@ -617,7 +618,7 @@ func (lbp *RancherLBProvider) waitForLBAction(action string, lb *client.LoadBala
 	return lbp.waitForCondition(action, cb)
 }
 
-func (lbp *RancherLBProvider) waitForLBPublicEndpoints(count int, lb *client.LoadBalancerService) <-chan interface{} {
+func (lbp *LBProvider) waitForLBPublicEndpoints(count int, lb *client.LoadBalancerService) <-chan interface{} {
 	cb := func(result chan<- interface{}) (bool, error) {
 		lb, err := lbp.reloadLBService(lb)
 		if err != nil {
@@ -632,7 +633,7 @@ func (lbp *RancherLBProvider) waitForLBPublicEndpoints(count int, lb *client.Loa
 	return lbp.waitForCondition("publicEndpoints", cb)
 }
 
-func (lbp *RancherLBProvider) waitForCondition(condition string, callback waitCallback) <-chan interface{} {
+func (lbp *LBProvider) waitForCondition(condition string, callback waitCallback) <-chan interface{} {
 	ready := make(chan interface{}, 0)
 	go func() {
 		sleep := 2

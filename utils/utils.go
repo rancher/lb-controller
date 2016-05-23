@@ -1,4 +1,4 @@
-package lbcontroller
+package controller
 
 import (
 	"github.com/Sirupsen/logrus"
