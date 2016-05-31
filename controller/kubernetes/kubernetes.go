@@ -412,7 +412,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 		// populate https service
 		if cert != nil {
 			frontendHTTPSPort := 443
-			if portStr, ok := params["http.port"]; ok {
+			if portStr, ok := params["https.port"]; ok {
 				frontendHTTPSPort, _ = strconv.Atoi(portStr)
 			}
 			frontEndHTTPSService := &config.FrontendService{
@@ -516,7 +516,6 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 	lbEndpoints := []config.Endpoint{}
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
-
 			if !reflect.DeepEqual(epPort.Protocol, proto) {
 				continue
 			}
