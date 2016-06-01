@@ -397,17 +397,26 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 		frontEndServices := []*config.FrontendService{}
 
 		// populate http service
-		frontendHTTPPort := 80
 		params := ing.ObjectMeta.GetAnnotations()
-		if portStr, ok := params["http.port"]; ok {
-			frontendHTTPPort, _ = strconv.Atoi(portStr)
+		allowHTTP := true
+		if allowHTTPStr, ok := params["allow.http"]; ok {
+			b, err := strconv.ParseBool(allowHTTPStr)
+			if err == nil {
+				allowHTTP = b
+			}
 		}
-		frontEndHTTPService := &config.FrontendService{
-			Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
-			Port:            frontendHTTPPort,
-			BackendServices: backends,
+		if allowHTTP == true {
+			frontendHTTPPort := 80
+			if portStr, ok := params["http.port"]; ok {
+				frontendHTTPPort, _ = strconv.Atoi(portStr)
+			}
+			frontEndHTTPService := &config.FrontendService{
+				Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
+				Port:            frontendHTTPPort,
+				BackendServices: backends,
+			}
+			frontEndServices = append(frontEndServices, frontEndHTTPService)
 		}
-		frontEndServices = append(frontEndServices, frontEndHTTPService)
 
 		// populate https service
 		if cert != nil {
