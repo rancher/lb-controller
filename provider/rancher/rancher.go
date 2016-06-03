@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/ingress-controller/provider"
 	utils "github.com/rancher/ingress-controller/utils"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -127,7 +128,7 @@ func (lbp *LBProvider) CleanupConfig(name string) error {
 	fmtName := lbp.formatLBName(name)
 	logrus.Infof("Deleting lb service [%s]", fmtName)
 
-	return lbp.deleteLBService(fmtName)
+	return lbp.deleteLBService(fmtName, false)
 }
 
 func (lbp *LBProvider) Stop() error {
@@ -165,7 +166,7 @@ func (lbp *LBProvider) syncupEndpoints() error {
 	}
 }
 
-func (lbp *LBProvider) deleteLBService(name string) error {
+func (lbp *LBProvider) deleteLBService(name string, waitForRemoval bool) error {
 	stack, err := lbp.getStack(controllerStackName)
 	if err != nil {
 		return err
@@ -182,6 +183,24 @@ func (lbp *LBProvider) deleteLBService(name string) error {
 		return nil
 	}
 	_, err = lbp.client.LoadBalancerService.ActionRemove(lb)
+	if err != nil {
+		return err
+	}
+
+	if !waitForRemoval {
+		return nil
+	}
+
+	lb, err = lbp.reloadLBService(lb)
+	if err != nil {
+		return err
+	}
+
+	actionChannel := lbp.waitForLBAction("purge", lb)
+	_, ok := <-actionChannel
+	if !ok {
+		return fmt.Errorf("Failed to finish remove on lb [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
+	}
 	return err
 }
 
@@ -328,6 +347,53 @@ func (lbp *LBProvider) updateCertificate(lbConfig *config.LoadBalancerConfig, lb
 	return nil
 }
 
+func (lbp *LBProvider) cleanupLBService(lb *client.LoadBalancerService, lbConfig *config.LoadBalancerConfig) *client.LoadBalancerService {
+	if lb == nil {
+		return nil
+	}
+	// check if service needs to be re-created
+	// (when ports don't match)
+	oldPorts := []string{}
+	for _, port := range lb.LaunchConfig.Ports {
+		split := strings.Split(port, ":")
+		oldPorts = append(oldPorts, split[0])
+	}
+
+	newPorts := []string{}
+	for _, frontEnd := range lbConfig.FrontendServices {
+		newPorts = append(newPorts, strconv.Itoa(frontEnd.Port))
+	}
+
+	if portsChanged(newPorts, oldPorts) {
+		fmtName := lbp.formatLBName(lbConfig.Name)
+		logrus.Infof("Ports changed for LB service [%s], need to recreate", lb.Name)
+		lbp.deleteLBService(fmtName, true)
+		return nil
+	}
+
+	return lb
+}
+
+func portsChanged(newPorts []string, oldPorts []string) bool {
+	if len(newPorts) != len(oldPorts) {
+		return true
+	}
+
+	if len(newPorts) == 0 {
+		return false
+	}
+
+	sort.Strings(newPorts)
+	sort.Strings(oldPorts)
+	for idx, p := range newPorts {
+		if p != oldPorts[idx] {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*client.LoadBalancerService, error) {
 	name := lbp.formatLBName(lbConfig.Name)
 	stack, err := lbp.getOrCreateSystemStack()
@@ -338,6 +404,9 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 	if err != nil {
 		return nil, err
 	}
+
+	lb = lbp.cleanupLBService(lb, lbConfig)
+
 	if lb != nil {
 		if lb.State != "active" {
 			return lbp.activateLBService(lb)
@@ -357,7 +426,7 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 			privatePort = strconv.Itoa(defaultBackend.Port)
 		}
 		lbPorts = append(lbPorts, fmt.Sprintf("%v:%v", publicPort, privatePort))
-		if lbFrontend.DefaultCert != nil {
+		if lbFrontend.Protocol == config.HTTPSProto {
 			labels["io.rancher.loadbalancer.ssl.ports"] = publicPort
 		}
 	}

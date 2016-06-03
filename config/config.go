@@ -1,5 +1,11 @@
 package config
 
+//supported protocols
+const (
+	HTTPProto  = "http"
+	HTTPSProto = "https"
+)
+
 type BackendService struct {
 	Namespace string
 	Name      string
@@ -20,6 +26,7 @@ type FrontendService struct {
 	Name            string
 	Port            int
 	BackendServices []*BackendService
+	Protocol        string
 }
 
 type LoadBalancerConfig struct {

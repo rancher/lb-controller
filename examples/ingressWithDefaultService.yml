@@ -3,8 +3,6 @@ kind: Ingress
 metadata:
   name: test
 spec:
-  tls:
-  - secretName: foo
   backend:
     serviceName: nginx-service
     servicePort: 80

@@ -414,6 +414,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 				Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
 				Port:            frontendHTTPPort,
 				BackendServices: backends,
+				Protocol:        config.HTTPProto,
 			}
 			frontEndServices = append(frontEndServices, frontEndHTTPService)
 		}
@@ -429,6 +430,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 				Port:            frontendHTTPSPort,
 				BackendServices: backends,
 				DefaultCert:     cert,
+				Protocol:        config.HTTPSProto,
 			}
 			frontEndServices = append(frontEndServices, frontEndHTTPSService)
 		}

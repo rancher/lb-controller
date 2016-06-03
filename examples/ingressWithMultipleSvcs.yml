@@ -17,4 +17,4 @@ spec:
       - path: /bar
         backend:
           serviceName: nginx-service1
-          servicePort: 80 
+          servicePort: 80
