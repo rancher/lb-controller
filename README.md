@@ -61,12 +61,25 @@ Ingress controller with Kubernetes/Rancher support can be deployed as:
 * part of Rancher system Kubernetes stack (recommended and officially supported way)
 * as a pod container in Kubernetes deployed through Rancher with ability to access Rancher server API.
 
+# Extra features
 
-# To fix in the future release
+* Rancher Load Balancer can be horizontally scaled by specifying desired scale via ingress annotations:
 
-* Add TLS support.
-* Support for custom public port. Today only standard http port 80 is supported as a public port, and we want to make it configurable.
-* Horizontal scaling for Rancher LB service. Today it gets deployed with scale=1 (which is equal to 1 public endnpoint). We want to make scale manageable as kubernetes ingress allows multiple IPs in the ingress Address:
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: scaledlb
+  annotations:
+    scale: "2"
+    http.port: "99"
+spec:
+  backend:
+    serviceName: nginx-service
+    servicePort: 90
+```
+
+as a result ingress gets updated with multiple public addresses end points:
 
 ```
 > kubectl get ingress
@@ -76,6 +89,28 @@ test      -                        104.154.107.202, 104.154.107.203  // hosts ip
           /foo           nginx-service:80
 
 ```
-* Support for Stickiness policies
+
+* By default, Kubernetes Ingress supports 2 public ports for Ingress: 80 and 443. With Rancher Ingress controller, you can define an alternative ports for both http and https:
+
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: scaledlb
+  annotations:
+    http.port: "99"
+    https.port: "444"
+spec:
+  backend:
+    serviceName: nginx-service
+    servicePort: 90
+```
+
+More info on the above can be found [here](http://docs.rancher.com/rancher/latest/en/kubernetes/ingress/)
+
+
+# To fix in the future release
+
+* TLS is supported by Rancher with the only one limitation: there is no SNI routing support. We are going to address it as a part of Load Balancer refacgtoring and integrate with Ingress resource as soon as it's done.
 * Support for TCP Load balancer
 * Possible integration with Route53 provider. LB service FQDN populated by Rancher Route53 service, will be propagated as an entry point for the ingress.
