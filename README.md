@@ -1,8 +1,8 @@
 # LB controller
 
-L7 Load Balancer service managing external load balancer provider configured via load balancer controller.
-Pluggable model allows different controller and provider implementation. v0.1.0 has support for Kubernetes ingress as an LB controller, and Rancher Load Balancer as a provider. 
-Rancher LB provider is a default one, although you can develop and deploy your own implementation (nginx, traefic, etc). 
+L7 Load Balancer service managing load balancer provider configured via load balancer controller.
+Pluggable model allows different controller and provider implementation. v0.1.0 has support for Kubernetes ingress as a controller, and Rancher Load Balancer as a provider. 
+Rancher provider is a default one, although you can develop and deploy your own implementation (nginx, traefic, etc). 
 
 # Design
 
