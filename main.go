@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"github.com/Sirupsen/logrus"
-	"github.com/rancher/ingress-controller/controller"
-	"github.com/rancher/ingress-controller/provider"
+	"github.com/rancher/lb-controller/controller"
+	"github.com/rancher/lb-controller/provider"
 	"os"
 	"os/signal"
 	"syscall"

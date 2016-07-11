@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/rancher/ingress-controller/config"
-	"github.com/rancher/ingress-controller/controller"
-	"github.com/rancher/ingress-controller/provider"
-	utils "github.com/rancher/ingress-controller/utils"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/controller"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
@@ -323,7 +323,7 @@ func (lbc *loadBalancerController) getPublicEndpoints(key string) []string {
 
 // Starts a load balancer controller
 func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
-	logrus.Infof("starting kubernetes-ingress-controller")
+	logrus.Infof("starting kubernetes-lb-controller")
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
 	go lbc.svcController.Run(lbc.stopCh)
@@ -336,7 +336,7 @@ func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
 	go lbc.lbProvider.Run(utils.NewTaskQueue(lbc.updateIngressStatus))
 
 	<-lbc.stopCh
-	logrus.Infof("shutting down kubernetes-ingress-controller")
+	logrus.Infof("shutting down kubernetes-lb-controller")
 }
 
 func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {

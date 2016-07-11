@@ -1,16 +1,16 @@
-# Ingress controller
+# LB controller
 
 L7 Load Balancer service managing external load balancer provider configured via load balancer controller.
 Pluggable model allows different controller and provider implementation. v0.1.0 has support for Kubernetes ingress as an LB controller, and Rancher Load Balancer as a provider. 
-Rancher LB provider is a default one, although you can develop and deploy your own implementation (nginx, ELB, F5, etc). 
+Rancher LB provider is a default one, although you can develop and deploy your own implementation (nginx, traefic, etc). 
 
 # Design
 
-* ingress-controller gets deployed as a containerized app with controller and provider names passed as an argument
-* LB controller listens to the corresponding server events, generate load balancer config and pass it to the provider to apply.
-* LB provider configures external load balancer, and pass LB public end point to the lb controller. 
-* LB controller propagates LB public end point back to the server.
-* LB controller doesn't carry any provider implementation details; it communicates with the provider via generic provider interface using generic LB config.
+* LB-controller gets deployed as a containerized app with controller and provider names passed as an argument
+* Controler listens to the corresponding server events, generate load balancer config and pass it to the provider to apply.
+* Provider configures external load balancer, and pass LB public end point to the controller. 
+* Controller propagates LB public end point back to the server.
+* Controller doesn't carry any provider implementation details; it communicates with the provider via generic provider interface using generic LB config.
 
 # Kubernetes as an LB controller and Rancher as an LB provider
 
@@ -43,20 +43,20 @@ Rancher Load Balancer provider:
 
 Refer to [kubernetes-ingress](//kubernetes.io/docs/user-guide/ingress/) and [kubernetes ingress-controller](//github.com/kubernetes/contrib/blob/master/ingress/controllers/README.md) for more info on Kubernetes ingress and ingress controller implementation solutions.
 
-# Build ingress controller
+# Build LB controller
 
-You can build ingress controller using [Rancher dapper tool](//github.com/rancher/dapper). Just install Dapper, and run the command below from ingress-controller directory:
+You can build LB controller using [Rancher dapper tool](//github.com/rancher/dapper). Just install Dapper, and run the command below from lb-controller directory:
 
 ```
 dapper
 ```
 
-it would build the binaries and create an ingress-controller image.
+it would build the binaries and create an lb-controller image.
 
 
-# Deploy ingress controller
+# Deploy LB controller
 
-Ingress controller with Kubernetes/Rancher support can be deployed as:
+LB controller with Kubernetes/Rancher support can be deployed as:
 
 * part of Rancher system Kubernetes stack (recommended and officially supported way)
 * as a pod container in Kubernetes deployed through Rancher with ability to access Rancher server API.

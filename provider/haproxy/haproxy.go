@@ -2,7 +2,7 @@ package provider
 
 import (
 	"fmt"
-	"github.com/rancher/ingress-controller/config"
+	"github.com/rancher/lb-controller/config"
 	"io"
 	"os"
 	"os/exec"

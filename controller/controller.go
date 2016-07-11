@@ -2,8 +2,8 @@ package controller
 
 import (
 	"fmt"
-	"github.com/rancher/ingress-controller/config"
-	"github.com/rancher/ingress-controller/provider"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/provider"
 )
 
 type LBController interface {
