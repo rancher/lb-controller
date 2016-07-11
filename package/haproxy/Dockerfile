@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y \
     apt-get update && apt-get install -y haproxy
 
 RUN mkdir -p /etc/haproxy/
-COPY ingress-controller /usr/bin/
+COPY lb-controller /usr/bin/
 COPY haproxy_reload /usr/bin/
 COPY haproxy_template.cfg /etc/haproxy/haproxy_template.cfg
 
-CMD ["ingress-controller"]
+CMD ["lb-controller"]

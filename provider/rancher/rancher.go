@@ -6,9 +6,9 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-machine-service/locks"
 	"github.com/rancher/go-rancher/client"
-	"github.com/rancher/ingress-controller/config"
-	"github.com/rancher/ingress-controller/provider"
-	utils "github.com/rancher/ingress-controller/utils"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
 	"os"
 	"sort"
 	"strconv"
@@ -145,7 +145,7 @@ func (lbp *LBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
 	go lbp.syncupEndpoints()
 
 	<-lbp.stopCh
-	logrus.Infof("shutting down kubernetes-ingress-controller")
+	logrus.Infof("shutting down kubernetes-lb-controller")
 }
 
 func (lbp *LBProvider) syncupEndpoints() error {

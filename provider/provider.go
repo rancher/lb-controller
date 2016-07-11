@@ -2,8 +2,8 @@ package provider
 
 import (
 	"fmt"
-	"github.com/rancher/ingress-controller/config"
-	utils "github.com/rancher/ingress-controller/utils"
+	"github.com/rancher/lb-controller/config"
+	utils "github.com/rancher/lb-controller/utils"
 )
 
 const Localhost = "localhost"
