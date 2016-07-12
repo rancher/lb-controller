@@ -10,7 +10,7 @@ type LBController interface {
 	GetName() string
 	Run(lbProvider provider.LBProvider)
 	Stop() error
-	GetLBConfigs() []*config.LoadBalancerConfig
+	GetLBConfigs() ([]*config.LoadBalancerConfig, error)
 	IsHealthy() bool
 }
 

@@ -547,12 +547,8 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 }
 
 func (lbp *LBProvider) getRancherCertID(lbConfig *config.LoadBalancerConfig) (string, error) {
-	var defaultCert *config.Certificate
-	for _, lbFrontend := range lbConfig.FrontendServices {
-		if lbFrontend.DefaultCert != nil {
-			defaultCert = lbFrontend.DefaultCert
-		}
-	}
+	defaultCert := lbConfig.DefaultCert
+
 	// get certificate
 	var rancherCertID string
 	if defaultCert != nil {
@@ -871,4 +867,8 @@ func (lbp *LBProvider) waitForCondition(condition string, callback waitCallback)
 		logrus.Errorf("Timed out waiting for condition [%s] ", condition)
 	}()
 	return ready
+}
+
+func (lbp *LBProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
+	return nil
 }

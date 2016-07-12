@@ -1,0 +1,38 @@
+#!/bin/bash
+set -e
+
+reload_haproxy(){
+    # copy certificates
+    rm -f /etc/haproxy/certs/current/*
+    cp -r /etc/haproxy/certs/new/. /etc/haproxy/certs/current
+    rm -f /etc/haproxy/certs/new/*
+    cp -r /etc/haproxy/haproxy_new.cfg  $1
+    # restart service
+    if [ $2 == "reload" ]; then
+        if haproxy -p /var/run/haproxy.pid -f $1 -sf $(cat /var/run/haproxy.pid); then
+            return 0
+        else
+            return 1
+        fi
+    fi
+}
+
+apply_config()
+{
+    # apply new config
+    if [ $2 == "reset" ]; then
+        reload_haproxy $1 $2
+        echo "resetting haproxy config"
+    elif ! cmp -s $1 /etc/haproxy/haproxy_new.cfg  ; then
+        reload_haproxy $1 $2
+        echo "reloading haproxy config with the new config changes"
+    elif ! diff -q /etc/haproxy/certs/new /etc/haproxy/certs/current > /dev/null  2>&1; then
+        reload_haproxy $1 $2
+        echo "reloading haproxy config with the certificates changes"
+    else
+        echo "no changes in haproxy config"
+        return 0
+    fi
+}
+
+apply_config $1 $2

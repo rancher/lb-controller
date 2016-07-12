@@ -202,7 +202,8 @@ func (lbc *loadBalancerController) sync(key string) {
 		return
 	}
 	requeue := false
-	for _, cfg := range lbc.GetLBConfigs() {
+	cfgs, _ := lbc.GetLBConfigs()
+	for _, cfg := range cfgs {
 		if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
 			logrus.Errorf("Failed to apply lb config on provider: %v", err)
 			requeue = true
@@ -323,7 +324,7 @@ func (lbc *loadBalancerController) getPublicEndpoints(key string) []string {
 
 // Starts a load balancer controller
 func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
-	logrus.Infof("starting kubernetes-lb-controller")
+	logrus.Infof("starting %s controller", lbc.GetName())
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
 	go lbc.svcController.Run(lbc.stopCh)
@@ -336,14 +337,14 @@ func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
 	go lbc.lbProvider.Run(utils.NewTaskQueue(lbc.updateIngressStatus))
 
 	<-lbc.stopCh
-	logrus.Infof("shutting down kubernetes-lb-controller")
+	logrus.Infof("shutting down %s controller", lbc.GetName())
 }
 
-func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
+func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig, error) {
 	ings := lbc.ingLister.Store.List()
 	lbConfigs := []*config.LoadBalancerConfig{}
 	if len(ings) == 0 {
-		return lbConfigs
+		return lbConfigs, nil
 	}
 	for _, ingIf := range ings {
 		backends := []*config.BackendService{}
@@ -429,7 +430,6 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 				Name:            fmt.Sprintf("%v_%v", ing.Name, "https"),
 				Port:            frontendHTTPSPort,
 				BackendServices: backends,
-				DefaultCert:     cert,
 				Protocol:        config.HTTPSProto,
 			}
 			frontEndServices = append(frontEndServices, frontEndHTTPSService)
@@ -443,11 +443,12 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 			Scale:            scale,
 			FrontendServices: frontEndServices,
 			Config:           params["config"],
+			DefaultCert:      cert,
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
 	}
 
-	return lbConfigs
+	return lbConfigs, nil
 }
 
 func (lbc *loadBalancerController) getCertificate(secretName string, namespace string) (*config.Certificate, error) {
@@ -518,13 +519,13 @@ func (lbc *loadBalancerController) getService(svcName string, namespace string) 
 }
 
 // getEndpoints returns a list of <endpoint ip> for a given service combination.
-func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []config.Endpoint {
+func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []*config.Endpoint {
 	ep, err := lbc.endpLister.GetServiceEndpoints(s)
 	if err != nil {
 		logrus.Warningf("unexpected error getting service endpoints: %v", err)
-		return []config.Endpoint{}
+		return []*config.Endpoint{}
 	}
-	lbEndpoints := []config.Endpoint{}
+	lbEndpoints := []*config.Endpoint{}
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
 			if !reflect.DeepEqual(epPort.Protocol, proto) {
@@ -548,7 +549,7 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 			}
 
 			for _, epAddress := range ss.Addresses {
-				lbEndpoint := config.Endpoint{
+				lbEndpoint := &config.Endpoint{
 					IP:   epAddress.IP,
 					Port: targetPort,
 				}
@@ -572,12 +573,11 @@ func (lbc *loadBalancerController) Stop() error {
 		}
 		lbc.removeFromIngress()
 		close(lbc.stopCh)
-		logrus.Infof("shutting down controller queues")
 		lbc.shutdown = true
 		lbc.syncQueue.Shutdown()
 		lbc.ingQueue.Shutdown()
 		lbc.cleanupQueue.Shutdown()
-
+		logrus.Infof("shut down controller queues")
 		return nil
 	}
 
