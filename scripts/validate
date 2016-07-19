@@ -11,7 +11,10 @@ echo Running: go vet
 go vet ${PACKAGES}
 echo Running: golint
 for i in ${PACKAGES}; do
-    test -z "$(golint $i | grep -v 'should have comment or be unexported' | tee /dev/stderr)"
+    if [ -n "$(golint $i | grep -v 'should have comment.*or be unexported' | tee /dev/stderr)" ]; then
+        failed=true
+    fi
 done
+test -z "$failed"
 echo Running: go fmt
 test -z "$(go fmt ${PACKAGES} | tee /dev/stderr)"

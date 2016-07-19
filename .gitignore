@@ -1,3 +1,8 @@
+/.dapper
+/bin
+/dist
+*.swp
+/.trash-cache
 lb-controller
 Dockerfile.dapper[1-9]*
 bin

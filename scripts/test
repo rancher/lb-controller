@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e 
+set -e
 
 cd $(dirname $0)/..
 
@@ -7,4 +7,5 @@ echo Running tests
 
 PACKAGES=". $(find -name '*.go' | xargs -I{} dirname {} |  cut -f2 -d/ | sort -u | grep -Ev '(^\.$|.git|.trash-cache|vendor|bin)' | sed -e 's!^!./!' -e 's!$!/...!')"
 
-go test -race -cover -tags=test ${PACKAGES}
+[ "${ARCH}" == "amd64" ] && RACE=-race
+go test ${RACE} -cover -tags=test ${PACKAGES}
