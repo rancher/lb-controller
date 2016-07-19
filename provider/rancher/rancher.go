@@ -276,7 +276,7 @@ func (lbp *LBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = controllerStackName
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["external_id"] = controllerExternalIDPrefix
+	opts.Filters["externalId"] = controllerExternalIDPrefix
 
 	envs, err := lbp.client.Environment.List(opts)
 	if err != nil {
@@ -615,7 +615,7 @@ func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) 
 	}
 	opts := client.NewListOpts()
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environment_id"] = stack.Id
+	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get all lb services. Error: %#v", err)
@@ -633,7 +633,7 @@ func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerServ
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environment_id"] = stack.Id
+	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get LB service by name [%s]. Error: %#v", name, err)
@@ -659,7 +659,7 @@ func (lbp *LBProvider) getKubernetesServiceByName(name string, stackName string)
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environment_id"] = stack.Id
+	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.KubernetesService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get service by name [%s]. Error: %#v", name, err)
