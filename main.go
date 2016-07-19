@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	lbControllerName = flag.String("lb-controller", "kubernetes", "Ingress controller name")
-	lbProviderName   = flag.String("lb-provider", "haproxy", "Lb controller name")
+	lbControllerName = flag.String("controller", "kubernetes", "Controller plugin name")
+	lbProviderName   = flag.String("provider", "haproxy", "Provider plugin name")
 
 	lbc controller.LBController
 	lbp provider.LBProvider

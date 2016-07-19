@@ -24,6 +24,7 @@ type PublicEndpoint struct {
 const (
 	controllerStackName        string = "kubernetes-ingress-lbs"
 	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
+	lbSvcNameSeparator         string = "-rancherlb-"
 )
 
 type LBProvider struct {
@@ -125,10 +126,16 @@ func (lbp *LBProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 }
 
 func (lbp *LBProvider) CleanupConfig(name string) error {
-	fmtName := lbp.formatLBName(name)
-	logrus.Infof("Deleting lb service [%s]", fmtName)
-
-	return lbp.deleteLBService(fmtName, false)
+	lb, err := lbp.getLBServiceForConfig(name)
+	if err != nil {
+		return err
+	}
+	if lb == nil {
+		logrus.Infof("LB [%s] doesn't exist, no need to cleanup ", name)
+		return nil
+	}
+	logrus.Infof("Deleting lb service [%s]", lb.Name)
+	return lbp.deleteLBService(lb, false)
 }
 
 func (lbp *LBProvider) Stop() error {
@@ -160,29 +167,22 @@ func (lbp *LBProvider) syncupEndpoints() error {
 			continue
 		}
 		for _, lb := range lbs {
-			splitted := strings.SplitN(lb.Name, "-", 2)
+			splitted := strings.SplitN(lb.Name, lbSvcNameSeparator, 2)
+			if len(splitted) != 2 {
+				// to support legacy code when we used "-"" as a separator
+				splitted = strings.SplitN(lb.Name, "-", 2)
+			}
+			// handle the case when lb was created outside of ingress scope
+			if len(splitted) < 2 {
+				continue
+			}
 			lbp.syncEndpointsQueue.Enqueue(fmt.Sprintf("%v/%v", splitted[0], splitted[1]))
 		}
 	}
 }
 
-func (lbp *LBProvider) deleteLBService(name string, waitForRemoval bool) error {
-	stack, err := lbp.getStack(controllerStackName)
-	if err != nil {
-		return err
-	}
-	if stack == nil {
-		logrus.Infof("Ingress controller stack [%s] doesn't exist, no need to cleanup LB ", controllerStackName)
-	}
-	lb, err := lbp.getLBServiceByName(name)
-	if err != nil {
-		return err
-	}
-	if lb == nil {
-		logrus.Infof("LB [%s] doesn't exist, no need to cleanup ", name)
-		return nil
-	}
-	_, err = lbp.client.LoadBalancerService.ActionRemove(lb)
+func (lbp *LBProvider) deleteLBService(lb *client.LoadBalancerService, waitForRemoval bool) error {
+	_, err := lbp.client.LoadBalancerService.ActionRemove(lb)
 	if err != nil {
 		return err
 	}
@@ -204,8 +204,11 @@ func (lbp *LBProvider) deleteLBService(name string, waitForRemoval bool) error {
 	return err
 }
 
-func (lbp *LBProvider) formatLBName(name string) string {
-	return strings.Replace(name, "/", "-", -1)
+func (lbp *LBProvider) formatLBName(name string, legacy bool) string {
+	if legacy {
+		return strings.Replace(name, "/", "-", -1)
+	}
+	return strings.Replace(name, "/", lbSvcNameSeparator, -1)
 }
 
 func (lbp *LBProvider) GetName() string {
@@ -214,33 +217,32 @@ func (lbp *LBProvider) GetName() string {
 
 func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 	epStr := []string{}
-	lbFmt := lbp.formatLBName(configName)
-	lb, err := lbp.getLBServiceByName(lbFmt)
+	lb, err := lbp.getLBServiceForConfig(configName)
 	if err != nil {
-		logrus.Errorf("Failed to find LB [%s]: %v", lbFmt, err)
+		logrus.Errorf("Failed to find LB [%s]: %v", configName, err)
 		return epStr
 	}
 	if lb == nil {
-		logrus.Infof("LB [%s] is not ready yet, skipping endpoint update", lbFmt)
+		logrus.Infof("LB [%s] is not ready yet, skipping endpoint update", configName)
 		return epStr
 	}
 
 	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
 	_, ok := <-epChannel
 	if !ok {
-		logrus.Infof("Couldn't get publicEndpoints for LB [%s], skipping endpoint update", lbFmt)
+		logrus.Infof("Couldn't get publicEndpoints for LB [%s], skipping endpoint update", lb.Name)
 		return epStr
 	}
 
 	lb, err = lbp.reloadLBService(lb)
 	if err != nil {
-		logrus.Infof("Failed to reload LB [%s], skipping endpoint update", lbFmt)
+		logrus.Infof("Failed to reload LB [%s], skipping endpoint update", lb.Name)
 		return epStr
 	}
 
 	eps := lb.PublicEndpoints
 	if len(eps) == 0 {
-		logrus.Infof("No public endpoints found for LB [%s], skipping endpoint update", lbFmt)
+		logrus.Infof("No public endpoints found for LB [%s], skipping endpoint update", lb.Name)
 		return epStr
 	}
 
@@ -249,7 +251,7 @@ func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 
 		err = convertObject(epObj, &ep)
 		if err != nil {
-			logrus.Errorf("Faield to convert public endpoints for LB [%s], skipping endpoint update %v", lbFmt, err)
+			logrus.Errorf("Faield to convert public endpoints for LB [%s], skipping endpoint update %v", lb.Name, err)
 			return epStr
 		}
 		epStr = append(epStr, ep.IPAddress)
@@ -276,7 +278,7 @@ func (lbp *LBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = controllerStackName
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["external_id"] = controllerExternalIDPrefix
+	opts.Filters["externalId"] = controllerExternalIDPrefix
 
 	envs, err := lbp.client.Environment.List(opts)
 	if err != nil {
@@ -365,13 +367,28 @@ func (lbp *LBProvider) cleanupLBService(lb *client.LoadBalancerService, lbConfig
 	}
 
 	if portsChanged(newPorts, oldPorts) {
-		fmtName := lbp.formatLBName(lbConfig.Name)
 		logrus.Infof("Ports changed for LB service [%s], need to recreate", lb.Name)
-		lbp.deleteLBService(fmtName, true)
+		lbp.deleteLBService(lb, true)
 		return nil
 	}
 
 	return lb
+}
+
+func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadBalancerService, error) {
+	fmtName := lbp.formatLBName(lbConfigName, false)
+	lb, err := lbp.getLBServiceByName(fmtName)
+	if err != nil {
+		return nil, err
+	}
+
+	if lb != nil {
+		return lb, nil
+	}
+	// legacy code where "-" was used as a separator
+	fmtName = lbp.formatLBName(lbConfigName, true)
+	logrus.Infof("Fetching service by name %v", fmtName)
+	return lbp.getLBServiceByName(fmtName)
 }
 
 func portsChanged(newPorts []string, oldPorts []string) bool {
@@ -395,12 +412,11 @@ func portsChanged(newPorts []string, oldPorts []string) bool {
 }
 
 func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*client.LoadBalancerService, error) {
-	name := lbp.formatLBName(lbConfig.Name)
 	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
 	}
-	lb, err := lbp.getLBServiceByName(name)
+	lb, err := lbp.getLBServiceForConfig(lbConfig.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +452,7 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 	if err != nil {
 		return nil, err
 	}
-
+	name := lbp.formatLBName(lbConfig.Name, false)
 	lb = &client.LoadBalancerService{
 		Name:          name,
 		EnvironmentId: stack.Id,
@@ -615,7 +631,7 @@ func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) 
 	}
 	opts := client.NewListOpts()
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environment_id"] = stack.Id
+	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get all lb services. Error: %#v", err)
@@ -633,7 +649,7 @@ func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerServ
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environment_id"] = stack.Id
+	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get LB service by name [%s]. Error: %#v", name, err)
@@ -659,7 +675,7 @@ func (lbp *LBProvider) getKubernetesServiceByName(name string, stackName string)
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environment_id"] = stack.Id
+	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.KubernetesService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get service by name [%s]. Error: %#v", name, err)
