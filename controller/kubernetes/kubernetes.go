@@ -486,8 +486,7 @@ func (lbc *loadBalancerController) getServiceBackend(svc *api.Service, port int,
 				continue
 			}
 			backend = &config.BackendService{
-				Name:      svc.Name,
-				Namespace: svc.Namespace,
+				UUID:      string(svc.UID),
 				Endpoints: eps,
 				Algorithm: "roundrobin",
 				Path:      path,
