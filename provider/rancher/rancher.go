@@ -303,7 +303,8 @@ func (lbp *LBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 
 func (lbp *LBProvider) getStack(name string) (*client.Environment, error) {
 	opts := client.NewListOpts()
-	opts.Filters["name"] = name
+
+	opts.Filters["externalId"] = fmt.Sprintf("kubernetes://%s", name)
 	opts.Filters["removed_null"] = "1"
 
 	envs, err := lbp.client.Environment.List(opts)
@@ -545,12 +546,12 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
 
 	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
-		svc, err := lbp.getKubernetesServiceByName(bcknd.Name, bcknd.Namespace)
+		svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
 		if err != nil {
 			return err
 		}
 		if svc == nil {
-			return fmt.Errorf("Failed to find service [%s] in stack [%s] in Rancher", bcknd.Name, bcknd.Namespace)
+			return fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
 		}
 		ports := []string{}
 		var port string
@@ -662,29 +663,18 @@ func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerServ
 	return &lbs.Data[0], nil
 }
 
-func (lbp *LBProvider) getKubernetesServiceByName(name string, stackName string) (*client.KubernetesService, error) {
-	stack, err := lbp.getStack(stackName)
-	if err != nil {
-		return nil, err
-	}
-
-	if stack == nil {
-		return nil, fmt.Errorf("Coudln't get stack by name [%s]", stackName)
-	}
-
+func (lbp *LBProvider) getKubernetesServiceByUUID(UUID string) (*client.KubernetesService, error) {
 	opts := client.NewListOpts()
-	opts.Filters["name"] = name
+	opts.Filters["externalId"] = UUID
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environmentId"] = stack.Id
 	lbs, err := lbp.client.KubernetesService.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get service by name [%s]. Error: %#v", name, err)
+		return nil, fmt.Errorf("Coudln't get service by uuid [%s]. Error: %#v", UUID, err)
 	}
 
 	if len(lbs.Data) == 0 {
 		return nil, nil
 	}
-
 	return &lbs.Data[0], nil
 }
 

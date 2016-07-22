@@ -7,8 +7,7 @@ const (
 )
 
 type BackendService struct {
-	Namespace string
-	Name      string
+	UUID      string
 	Endpoints []Endpoint
 	Path      string
 	Host      string
@@ -31,7 +30,6 @@ type FrontendService struct {
 
 type LoadBalancerConfig struct {
 	Name             string
-	Namespace        string
 	Scale            int
 	FrontendServices []*FrontendService
 }
