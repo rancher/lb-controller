@@ -31,7 +31,7 @@ import (
 
 // NewSerializer creates a JSON serializer that handles encoding versioned objects into the proper JSON form. If typer
 // is not nil, the object has the group, version, and kind fields set.
-func NewSerializer(meta MetaFactory, creater runtime.ObjectCreater, typer runtime.Typer, pretty bool) runtime.Serializer {
+func NewSerializer(meta MetaFactory, creater runtime.ObjectCreater, typer runtime.ObjectTyper, pretty bool) *Serializer {
 	return &Serializer{
 		meta:    meta,
 		creater: creater,
@@ -44,7 +44,7 @@ func NewSerializer(meta MetaFactory, creater runtime.ObjectCreater, typer runtim
 // NewYAMLSerializer creates a YAML serializer that handles encoding versioned objects into the proper YAML form. If typer
 // is not nil, the object has the group, version, and kind fields set. This serializer supports only the subset of YAML that
 // matches JSON, and will error if constructs are used that do not serialize to JSON.
-func NewYAMLSerializer(meta MetaFactory, creater runtime.ObjectCreater, typer runtime.Typer) runtime.Serializer {
+func NewYAMLSerializer(meta MetaFactory, creater runtime.ObjectCreater, typer runtime.ObjectTyper) *Serializer {
 	return &Serializer{
 		meta:    meta,
 		creater: creater,
@@ -56,7 +56,7 @@ func NewYAMLSerializer(meta MetaFactory, creater runtime.ObjectCreater, typer ru
 type Serializer struct {
 	meta    MetaFactory
 	creater runtime.ObjectCreater
-	typer   runtime.Typer
+	typer   runtime.ObjectTyper
 	yaml    bool
 	pretty  bool
 }
@@ -111,12 +111,12 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 	if unk, ok := into.(*runtime.Unknown); ok && unk != nil {
 		unk.Raw = originalData
 		unk.ContentType = runtime.ContentTypeJSON
-		unk.GetObjectKind().SetGroupVersionKind(actual)
+		unk.GetObjectKind().SetGroupVersionKind(*actual)
 		return unk, actual, nil
 	}
 
 	if into != nil {
-		typed, _, err := s.typer.ObjectKind(into)
+		types, _, err := s.typer.ObjectKinds(into)
 		switch {
 		case runtime.IsNotRegisteredError(err):
 			if err := codec.NewDecoderBytes(data, new(codec.JsonHandle)).Decode(into); err != nil {
@@ -126,6 +126,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 		case err != nil:
 			return nil, actual, err
 		default:
+			typed := types[0]
 			if len(actual.Kind) == 0 {
 				actual.Kind = typed.Kind
 			}
@@ -158,8 +159,8 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 	return obj, actual, nil
 }
 
-// EncodeToStream serializes the provided object to the given writer. Overrides is ignored.
-func (s *Serializer) EncodeToStream(obj runtime.Object, w io.Writer, overrides ...unversioned.GroupVersion) error {
+// Encode serializes the provided object to the given writer.
+func (s *Serializer) Encode(obj runtime.Object, w io.Writer) error {
 	if s.yaml {
 		json, err := json.Marshal(obj)
 		if err != nil {
@@ -186,38 +187,57 @@ func (s *Serializer) EncodeToStream(obj runtime.Object, w io.Writer, overrides .
 }
 
 // RecognizesData implements the RecognizingDecoder interface.
-func (s *Serializer) RecognizesData(peek io.Reader) (bool, error) {
-	_, ok := utilyaml.GuessJSONStream(peek, 2048)
+func (s *Serializer) RecognizesData(peek io.Reader) (ok, unknown bool, err error) {
 	if s.yaml {
-		return !ok, nil
+		// we could potentially look for '---'
+		return false, true, nil
 	}
-	return ok, nil
+	_, ok = utilyaml.GuessJSONStream(peek, 2048)
+	return ok, false, nil
 }
 
+// Framer is the default JSON framing behavior, with newlines delimiting individual objects.
+var Framer = jsonFramer{}
+
+type jsonFramer struct{}
+
 // NewFrameWriter implements stream framing for this serializer
-func (s *Serializer) NewFrameWriter(w io.Writer) io.Writer {
-	if s.yaml {
-		// TODO: needs document framing
-		return nil
-	}
+func (jsonFramer) NewFrameWriter(w io.Writer) io.Writer {
 	// we can write JSON objects directly to the writer, because they are self-framing
 	return w
 }
 
 // NewFrameReader implements stream framing for this serializer
-func (s *Serializer) NewFrameReader(r io.Reader) io.Reader {
-	if s.yaml {
-		// TODO: needs document framing
-		return nil
-	}
+func (jsonFramer) NewFrameReader(r io.ReadCloser) io.ReadCloser {
 	// we need to extract the JSON chunks of data to pass to Decode()
 	return framer.NewJSONFramedReader(r)
 }
 
-// EncodesAsText returns true because both JSON and YAML are considered textual representations
-// of data. This is used to determine whether the serialized object should be transmitted over
-// a WebSocket Text or Binary frame. This must remain true for legacy compatibility with v1.1
-// watch over websocket implementations.
-func (s *Serializer) EncodesAsText() bool {
-	return true
+// Framer is the default JSON framing behavior, with newlines delimiting individual objects.
+var YAMLFramer = yamlFramer{}
+
+type yamlFramer struct{}
+
+// NewFrameWriter implements stream framing for this serializer
+func (yamlFramer) NewFrameWriter(w io.Writer) io.Writer {
+	return yamlFrameWriter{w}
+}
+
+// NewFrameReader implements stream framing for this serializer
+func (yamlFramer) NewFrameReader(r io.ReadCloser) io.ReadCloser {
+	// extract the YAML document chunks directly
+	return utilyaml.NewDocumentDecoder(r)
+}
+
+type yamlFrameWriter struct {
+	w io.Writer
+}
+
+// Write separates each document with the YAML document separator (`---` followed by line
+// break). Writers must write well formed YAML documents (include a final line break).
+func (w yamlFrameWriter) Write(data []byte) (n int, err error) {
+	if _, err := w.w.Write([]byte("---\n")); err != nil {
+		return 0, err
+	}
+	return w.w.Write(data)
 }

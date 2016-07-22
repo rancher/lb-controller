@@ -3,6 +3,8 @@ mux
 [![GoDoc](https://godoc.org/github.com/gorilla/mux?status.svg)](https://godoc.org/github.com/gorilla/mux)
 [![Build Status](https://travis-ci.org/gorilla/mux.svg?branch=master)](https://travis-ci.org/gorilla/mux)
 
+http://www.gorillatoolkit.org/pkg/mux
+
 Package `gorilla/mux` implements a request router and dispatcher.
 
 The name mux stands for "HTTP request multiplexer". Like the standard `http.ServeMux`, `mux.Router` matches incoming requests against a list of registered routes and calls a handler for the route that matches the URL or other conditions. The main features are:
@@ -116,7 +118,7 @@ Then register routes in the subrouter:
 ```go
 s.HandleFunc("/products/", ProductsHandler)
 s.HandleFunc("/products/{key}", ProductHandler)
-s.HandleFunc("/articles/{category}/{id:[0-9]+}"), ArticleHandler)
+s.HandleFunc("/articles/{category}/{id:[0-9]+}", ArticleHandler)
 ```
 
 The three URL paths we registered above will only be tested if the domain is `www.example.com`, because the subrouter is tested first. This is not only convenient, but also optimizes request matching. You can create subrouters combining any attribute matchers accepted by a route.
@@ -217,7 +219,7 @@ package main
 
 import (
 	"net/http"
-
+	"log"
 	"github.com/gorilla/mux"
 )
 
@@ -231,7 +233,7 @@ func main() {
 	r.HandleFunc("/", YourHandler)
 
 	// Bind to a port and pass our router in
-	http.ListenAndServe(":8000", r)
+	log.Fatal(http.ListenAndServe(":8000", r))
 }
 ```
 

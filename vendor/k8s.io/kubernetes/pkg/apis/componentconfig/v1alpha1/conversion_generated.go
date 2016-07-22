@@ -24,7 +24,6 @@ import (
 	api "k8s.io/kubernetes/pkg/api"
 	componentconfig "k8s.io/kubernetes/pkg/apis/componentconfig"
 	conversion "k8s.io/kubernetes/pkg/conversion"
-	reflect "reflect"
 )
 
 func init() {
@@ -42,49 +41,27 @@ func init() {
 }
 
 func autoConvert_v1alpha1_KubeProxyConfiguration_To_componentconfig_KubeProxyConfiguration(in *KubeProxyConfiguration, out *componentconfig.KubeProxyConfiguration, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*KubeProxyConfiguration))(in)
-	}
+	SetDefaults_KubeProxyConfiguration(in)
 	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
 		return err
 	}
 	out.BindAddress = in.BindAddress
+	out.ClusterCIDR = in.ClusterCIDR
 	out.HealthzBindAddress = in.HealthzBindAddress
-	out.HealthzPort = int(in.HealthzPort)
+	out.HealthzPort = in.HealthzPort
 	out.HostnameOverride = in.HostnameOverride
-	if in.IPTablesMasqueradeBit != nil {
-		in, out := &in.IPTablesMasqueradeBit, &out.IPTablesMasqueradeBit
-		*out = new(int)
-		**out = int(**in)
-	} else {
-		out.IPTablesMasqueradeBit = nil
-	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.IPTablesSyncPeriod, &out.IPTablesSyncPeriod, 0); err != nil {
-		return err
-	}
+	out.IPTablesMasqueradeBit = in.IPTablesMasqueradeBit
+	out.IPTablesSyncPeriod = in.IPTablesSyncPeriod
 	out.KubeconfigPath = in.KubeconfigPath
 	out.MasqueradeAll = in.MasqueradeAll
 	out.Master = in.Master
-	if in.OOMScoreAdj != nil {
-		in, out := &in.OOMScoreAdj, &out.OOMScoreAdj
-		*out = new(int)
-		**out = int(**in)
-	} else {
-		out.OOMScoreAdj = nil
-	}
+	out.OOMScoreAdj = in.OOMScoreAdj
 	out.Mode = componentconfig.ProxyMode(in.Mode)
 	out.PortRange = in.PortRange
 	out.ResourceContainer = in.ResourceContainer
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.UDPIdleTimeout, &out.UDPIdleTimeout, 0); err != nil {
-		return err
-	}
-	out.ConntrackMax = int(in.ConntrackMax)
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.ConntrackTCPEstablishedTimeout, &out.ConntrackTCPEstablishedTimeout, 0); err != nil {
-		return err
-	}
+	out.UDPIdleTimeout = in.UDPIdleTimeout
+	out.ConntrackMax = in.ConntrackMax
+	out.ConntrackTCPEstablishedTimeout = in.ConntrackTCPEstablishedTimeout
 	return nil
 }
 
@@ -93,49 +70,26 @@ func Convert_v1alpha1_KubeProxyConfiguration_To_componentconfig_KubeProxyConfigu
 }
 
 func autoConvert_componentconfig_KubeProxyConfiguration_To_v1alpha1_KubeProxyConfiguration(in *componentconfig.KubeProxyConfiguration, out *KubeProxyConfiguration, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*componentconfig.KubeProxyConfiguration))(in)
-	}
 	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
 		return err
 	}
 	out.BindAddress = in.BindAddress
+	out.ClusterCIDR = in.ClusterCIDR
 	out.HealthzBindAddress = in.HealthzBindAddress
-	out.HealthzPort = int32(in.HealthzPort)
+	out.HealthzPort = in.HealthzPort
 	out.HostnameOverride = in.HostnameOverride
-	if in.IPTablesMasqueradeBit != nil {
-		in, out := &in.IPTablesMasqueradeBit, &out.IPTablesMasqueradeBit
-		*out = new(int32)
-		**out = int32(**in)
-	} else {
-		out.IPTablesMasqueradeBit = nil
-	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.IPTablesSyncPeriod, &out.IPTablesSyncPeriod, 0); err != nil {
-		return err
-	}
+	out.IPTablesMasqueradeBit = in.IPTablesMasqueradeBit
+	out.IPTablesSyncPeriod = in.IPTablesSyncPeriod
 	out.KubeconfigPath = in.KubeconfigPath
 	out.MasqueradeAll = in.MasqueradeAll
 	out.Master = in.Master
-	if in.OOMScoreAdj != nil {
-		in, out := &in.OOMScoreAdj, &out.OOMScoreAdj
-		*out = new(int32)
-		**out = int32(**in)
-	} else {
-		out.OOMScoreAdj = nil
-	}
+	out.OOMScoreAdj = in.OOMScoreAdj
 	out.Mode = ProxyMode(in.Mode)
 	out.PortRange = in.PortRange
 	out.ResourceContainer = in.ResourceContainer
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.UDPIdleTimeout, &out.UDPIdleTimeout, 0); err != nil {
-		return err
-	}
-	out.ConntrackMax = int32(in.ConntrackMax)
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.ConntrackTCPEstablishedTimeout, &out.ConntrackTCPEstablishedTimeout, 0); err != nil {
-		return err
-	}
+	out.UDPIdleTimeout = in.UDPIdleTimeout
+	out.ConntrackMax = in.ConntrackMax
+	out.ConntrackTCPEstablishedTimeout = in.ConntrackTCPEstablishedTimeout
 	return nil
 }
 
@@ -144,22 +98,23 @@ func Convert_componentconfig_KubeProxyConfiguration_To_v1alpha1_KubeProxyConfigu
 }
 
 func autoConvert_v1alpha1_KubeSchedulerConfiguration_To_componentconfig_KubeSchedulerConfiguration(in *KubeSchedulerConfiguration, out *componentconfig.KubeSchedulerConfiguration, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*KubeSchedulerConfiguration))(in)
-	}
+	SetDefaults_KubeSchedulerConfiguration(in)
 	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
 		return err
 	}
-	out.Port = in.Port
+	out.Port = int32(in.Port)
 	out.Address = in.Address
 	out.AlgorithmProvider = in.AlgorithmProvider
 	out.PolicyConfigFile = in.PolicyConfigFile
 	if err := api.Convert_Pointer_bool_To_bool(&in.EnableProfiling, &out.EnableProfiling, s); err != nil {
 		return err
 	}
+	out.ContentType = in.ContentType
 	out.KubeAPIQPS = in.KubeAPIQPS
-	out.KubeAPIBurst = in.KubeAPIBurst
+	out.KubeAPIBurst = int32(in.KubeAPIBurst)
 	out.SchedulerName = in.SchedulerName
+	out.HardPodAffinitySymmetricWeight = in.HardPodAffinitySymmetricWeight
+	out.FailureDomains = in.FailureDomains
 	if err := Convert_v1alpha1_LeaderElectionConfiguration_To_componentconfig_LeaderElectionConfiguration(&in.LeaderElection, &out.LeaderElection, s); err != nil {
 		return err
 	}
@@ -171,22 +126,22 @@ func Convert_v1alpha1_KubeSchedulerConfiguration_To_componentconfig_KubeSchedule
 }
 
 func autoConvert_componentconfig_KubeSchedulerConfiguration_To_v1alpha1_KubeSchedulerConfiguration(in *componentconfig.KubeSchedulerConfiguration, out *KubeSchedulerConfiguration, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*componentconfig.KubeSchedulerConfiguration))(in)
-	}
 	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
 		return err
 	}
-	out.Port = in.Port
+	out.Port = int(in.Port)
 	out.Address = in.Address
 	out.AlgorithmProvider = in.AlgorithmProvider
 	out.PolicyConfigFile = in.PolicyConfigFile
 	if err := api.Convert_bool_To_Pointer_bool(&in.EnableProfiling, &out.EnableProfiling, s); err != nil {
 		return err
 	}
+	out.ContentType = in.ContentType
 	out.KubeAPIQPS = in.KubeAPIQPS
-	out.KubeAPIBurst = in.KubeAPIBurst
+	out.KubeAPIBurst = int(in.KubeAPIBurst)
 	out.SchedulerName = in.SchedulerName
+	out.HardPodAffinitySymmetricWeight = in.HardPodAffinitySymmetricWeight
+	out.FailureDomains = in.FailureDomains
 	if err := Convert_componentconfig_LeaderElectionConfiguration_To_v1alpha1_LeaderElectionConfiguration(&in.LeaderElection, &out.LeaderElection, s); err != nil {
 		return err
 	}
@@ -198,24 +153,13 @@ func Convert_componentconfig_KubeSchedulerConfiguration_To_v1alpha1_KubeSchedule
 }
 
 func autoConvert_v1alpha1_LeaderElectionConfiguration_To_componentconfig_LeaderElectionConfiguration(in *LeaderElectionConfiguration, out *componentconfig.LeaderElectionConfiguration, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*LeaderElectionConfiguration))(in)
-	}
+	SetDefaults_LeaderElectionConfiguration(in)
 	if err := api.Convert_Pointer_bool_To_bool(&in.LeaderElect, &out.LeaderElect, s); err != nil {
 		return err
 	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.LeaseDuration, &out.LeaseDuration, 0); err != nil {
-		return err
-	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.RenewDeadline, &out.RenewDeadline, 0); err != nil {
-		return err
-	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.RetryPeriod, &out.RetryPeriod, 0); err != nil {
-		return err
-	}
+	out.LeaseDuration = in.LeaseDuration
+	out.RenewDeadline = in.RenewDeadline
+	out.RetryPeriod = in.RetryPeriod
 	return nil
 }
 
@@ -224,24 +168,12 @@ func Convert_v1alpha1_LeaderElectionConfiguration_To_componentconfig_LeaderElect
 }
 
 func autoConvert_componentconfig_LeaderElectionConfiguration_To_v1alpha1_LeaderElectionConfiguration(in *componentconfig.LeaderElectionConfiguration, out *LeaderElectionConfiguration, s conversion.Scope) error {
-	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
-		defaulting.(func(*componentconfig.LeaderElectionConfiguration))(in)
-	}
 	if err := api.Convert_bool_To_Pointer_bool(&in.LeaderElect, &out.LeaderElect, s); err != nil {
 		return err
 	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.LeaseDuration, &out.LeaseDuration, 0); err != nil {
-		return err
-	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.RenewDeadline, &out.RenewDeadline, 0); err != nil {
-		return err
-	}
-	// TODO: Inefficient conversion - can we improve it?
-	if err := s.Convert(&in.RetryPeriod, &out.RetryPeriod, 0); err != nil {
-		return err
-	}
+	out.LeaseDuration = in.LeaseDuration
+	out.RenewDeadline = in.RenewDeadline
+	out.RetryPeriod = in.RetryPeriod
 	return nil
 }
 

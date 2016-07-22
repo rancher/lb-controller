@@ -7,19 +7,23 @@ const (
 type MachineDriver struct {
 	Resource
 
-	AccountId string `json:"accountId,omitempty" yaml:"account_id,omitempty"`
+	ActivateOnCreate bool `json:"activateOnCreate,omitempty" yaml:"activate_on_create,omitempty"`
+
+	Builtin bool `json:"builtin,omitempty" yaml:"builtin,omitempty"`
+
+	Checksum string `json:"checksum,omitempty" yaml:"checksum,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	Data map[string]interface{} `json:"data,omitempty" yaml:"data,omitempty"`
 
+	DefaultActive bool `json:"defaultActive,omitempty" yaml:"default_active,omitempty"`
+
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	ErrorMessage string `json:"errorMessage,omitempty" yaml:"error_message,omitempty"`
+	ExternalId string `json:"externalId,omitempty" yaml:"external_id,omitempty"`
 
 	Kind string `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-	Md5checksum string `json:"md5checksum,omitempty" yaml:"md5checksum,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
@@ -37,7 +41,7 @@ type MachineDriver struct {
 
 	UiUrl string `json:"uiUrl,omitempty" yaml:"ui_url,omitempty"`
 
-	Uri string `json:"uri,omitempty" yaml:"uri,omitempty"`
+	Url string `json:"url,omitempty" yaml:"url,omitempty"`
 
 	Uuid string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
@@ -60,13 +64,15 @@ type MachineDriverOperations interface {
 
 	ActionActivate(*MachineDriver) (*MachineDriver, error)
 
-	ActionError(*MachineDriver, *MachineDriverErrorInput) (*MachineDriver, error)
+	ActionDeactivate(*MachineDriver) (*MachineDriver, error)
+
+	ActionError(*MachineDriver) (*MachineDriver, error)
+
+	ActionReactivate(*MachineDriver) (*MachineDriver, error)
 
 	ActionRemove(*MachineDriver) (*MachineDriver, error)
 
-	ActionRetry(*MachineDriver) (*MachineDriver, error)
-
-	ActionUpdate(*MachineDriver, *MachineDriverUpdateInput) (*MachineDriver, error)
+	ActionUpdate(*MachineDriver) (*MachineDriver, error)
 }
 
 func newMachineDriverClient(rancherClient *RancherClient) *MachineDriverClient {
@@ -117,11 +123,29 @@ func (c *MachineDriverClient) ActionActivate(resource *MachineDriver) (*MachineD
 	return resp, err
 }
 
-func (c *MachineDriverClient) ActionError(resource *MachineDriver, input *MachineDriverErrorInput) (*MachineDriver, error) {
+func (c *MachineDriverClient) ActionDeactivate(resource *MachineDriver) (*MachineDriver, error) {
 
 	resp := &MachineDriver{}
 
-	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "error", &resource.Resource, input, resp)
+	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "deactivate", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *MachineDriverClient) ActionError(resource *MachineDriver) (*MachineDriver, error) {
+
+	resp := &MachineDriver{}
+
+	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "error", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *MachineDriverClient) ActionReactivate(resource *MachineDriver) (*MachineDriver, error) {
+
+	resp := &MachineDriver{}
+
+	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "reactivate", &resource.Resource, nil, resp)
 
 	return resp, err
 }
@@ -135,20 +159,11 @@ func (c *MachineDriverClient) ActionRemove(resource *MachineDriver) (*MachineDri
 	return resp, err
 }
 
-func (c *MachineDriverClient) ActionRetry(resource *MachineDriver) (*MachineDriver, error) {
+func (c *MachineDriverClient) ActionUpdate(resource *MachineDriver) (*MachineDriver, error) {
 
 	resp := &MachineDriver{}
 
-	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "retry", &resource.Resource, nil, resp)
-
-	return resp, err
-}
-
-func (c *MachineDriverClient) ActionUpdate(resource *MachineDriver, input *MachineDriverUpdateInput) (*MachineDriver, error) {
-
-	resp := &MachineDriver{}
-
-	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "update", &resource.Resource, input, resp)
+	err := c.rancherClient.doAction(MACHINE_DRIVER_TYPE, "update", &resource.Resource, nil, resp)
 
 	return resp, err
 }
