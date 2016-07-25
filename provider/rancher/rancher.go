@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Sirupsen/logrus"
-	"github.com/rancher/go-machine-service/locks"
+	"github.com/rancher/event-subscriber/locks"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
