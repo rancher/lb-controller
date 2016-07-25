@@ -480,7 +480,7 @@ func (lbc *loadBalancerController) getCertificate(secretName string, namespace s
 func (lbc *loadBalancerController) getServiceBackend(svc *api.Service, port int, path string, host string) *config.BackendService {
 	var backend *config.BackendService
 	for _, servicePort := range svc.Spec.Ports {
-		if servicePort.Port == port {
+		if int(servicePort.Port) == port {
 			eps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
 			if len(eps) == 0 {
 				continue
@@ -533,12 +533,12 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 			var targetPort int
 			switch servicePort.Type {
 			case intstr.Int:
-				if epPort.Port == servicePort.IntValue() {
-					targetPort = epPort.Port
+				if int(epPort.Port) == servicePort.IntValue() {
+					targetPort = int(epPort.Port)
 				}
 			case intstr.String:
 				if epPort.Name == servicePort.StrVal {
-					targetPort = epPort.Port
+					targetPort = int(epPort.Port)
 				}
 			}
 
