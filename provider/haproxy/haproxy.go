@@ -65,6 +65,7 @@ func (cfg *haproxyConfig) write(lbConfig *config.LoadBalancerConfig) (err error)
 		config.HTTPSProto: true,
 		config.TLSProto:   true,
 		config.TCPProto:   true,
+		config.SNIProto:   true,
 	}
 	for _, fe := range lbConfig.FrontendServices {
 		//filter our based on supported proto

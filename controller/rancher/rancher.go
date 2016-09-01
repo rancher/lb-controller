@@ -172,7 +172,7 @@ func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta
 		comparator := config.EqRuleComparator
 		path := rule.Path
 		hostname := rule.Hostname
-		if !(strings.EqualFold(rule.Protocol, config.HTTPSProto) || strings.EqualFold(rule.Protocol, config.HTTPProto)) {
+		if !(strings.EqualFold(rule.Protocol, config.HTTPSProto) || strings.EqualFold(rule.Protocol, config.HTTPProto) || strings.EqualFold(rule.Protocol, config.SNIProto)) {
 			path = ""
 			hostname = ""
 		}
