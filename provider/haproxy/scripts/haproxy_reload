@@ -2,6 +2,10 @@
 set -e
 
 reload_haproxy(){
+    # start rsyslog if not running 
+    if [[ $(pgrep rsyslog | wc -l) != 1 ]]; then
+        rsyslogd -f /etc/haproxy/rsyslogd.conf > /dev/null
+    fi
     # copy certificates
     rm -f /etc/haproxy/certs/current/*
     cp -r /etc/haproxy/certs/new/. /etc/haproxy/certs/current

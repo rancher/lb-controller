@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     vim-tiny \
     openssl \
     libssl-dev \
+    rsyslog \
     software-properties-common && \
     add-apt-repository ppa:vbernat/haproxy-1.6 && \
     apt-get update && apt-get install -y haproxy && \
@@ -17,6 +18,10 @@ RUN mkdir -p /etc/haproxy/
 COPY lb-controller /usr/bin/
 COPY scripts/* /usr/bin/
 COPY config/* /etc/haproxy/
+
+RUN mkdir /var/log/haproxy
+RUN touch /var/log/haproxy/traffic /var/log/haproxy/events /var/log/haproxy/errors
+RUN cat /etc/haproxy/logrotate.cfg >> /etc/logrotate.d/haproxy
 
 ENTRYPOINT ["lb-controller"]
 CMD ["--controller", "rancher", "--provider", "haproxy"]
