@@ -287,6 +287,38 @@ func TestRuleFields(t *testing.T) {
 	}
 }
 
+func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
+	var svcs []metadata.Service
+	port := Port{
+		Path:        "/baz",
+		Hostname:    "baz.com",
+		TargetPort:  46,
+		BackendName: "baz",
+		Service:     "default/baz",
+	}
+
+	var portRules []Port
+	portRules = append(portRules, port)
+
+	meta := make(map[string]interface{})
+	lbMeta := LBMetadata{
+		PortRules: portRules,
+	}
+
+	meta["lb"] = lbMeta
+
+	labels := make(map[string]string)
+	labels["foo"] = "bar"
+	svc := metadata.Service{
+		Kind:       "service",
+		Containers: getContainers("selector"),
+		Metadata:   meta,
+		Labels:     labels,
+	}
+	svcs = append(svcs, svc)
+	return svcs, nil
+}
+
 func (mf tMetaFetcher) GetService(svcName string, stackName string) (*metadata.Service, error) {
 	var svc *metadata.Service
 	if strings.EqualFold(svcName, "foo") {
@@ -314,6 +346,11 @@ func (mf tMetaFetcher) GetService(svcName string, stackName string) (*metadata.S
 		svc = &metadata.Service{
 			Kind:        "externalService",
 			ExternalIps: ips,
+		}
+	} else if strings.EqualFold(svcName, "selector") {
+		svc = &metadata.Service{
+			Kind:       "service",
+			Containers: getContainers("selector"),
 		}
 	}
 
@@ -345,6 +382,12 @@ func getContainers(svcName string) []metadata.Container {
 		}
 		containers = append(containers, c1)
 		containers = append(containers, c2)
+	} else if strings.EqualFold(svcName, "selector") {
+		c1 := metadata.Container{
+			PrimaryIp: "10.1.1.10",
+			State:     "running",
+		}
+		containers = append(containers, c1)
 	}
 	return containers
 }
@@ -389,4 +432,73 @@ func (p *tProvider) IsHealthy() bool {
 
 func (p *tProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
+}
+
+func TestSelectorNoMatch(t *testing.T) {
+	portRules := []Port{}
+	port := Port{
+		Protocol:   "http",
+		SourcePort: 45,
+		Selector:   "foo1=bar1",
+	}
+	portRules = append(portRules, port)
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	lbc.processSelector(meta)
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+
+	if len(configs[0].FrontendServices) != 0 {
+		t.Fatalf("Incorrect number of frontend services %v", len(configs[0].FrontendServices))
+	}
+}
+
+func TestSelectorMatch(t *testing.T) {
+	portRules := []Port{}
+	port := Port{
+		Protocol:   "http",
+		SourcePort: 45,
+		Selector:   "foo=bar",
+	}
+	portRules = append(portRules, port)
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	lbc.processSelector(meta)
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+
+	fe := configs[0].FrontendServices[0]
+	if len(fe.BackendServices) == 0 {
+		t.Fatal("No backends are configured for selector based service")
+	}
+
+	be := fe.BackendServices[0]
+
+	if fe.Port != 45 {
+		t.Fatalf("Port is incorrect %v", fe.Port)
+	}
+
+	if fe.Protocol != "http" {
+		t.Fatalf("Proto is incorrect %v", fe.Protocol)
+	}
+
+	if be.Host != "baz.com" {
+		t.Fatalf("Host is incorrect %v", be.Host)
+	}
+
+	if be.Path != "/baz" {
+		t.Fatalf("Path is incorrect %v", be.Path)
+	}
+
+	if be.Port != 46 {
+		t.Fatalf("Port is incorrect %v", be.Port)
+	}
+
+	if be.UUID != "baz" {
+		t.Fatalf("Backend name is incorrect %v", be.UUID)
+	}
 }

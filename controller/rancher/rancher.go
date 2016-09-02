@@ -46,6 +46,7 @@ type MetadataFetcher interface {
 	GetSelfService() (metadata.Service, error)
 	GetService(svcName string, stackName string) (*metadata.Service, error)
 	OnChange(intervalSeconds int, do func(string))
+	GetServices() ([]metadata.Service, error)
 }
 
 type rMetaFetcher struct {
@@ -262,6 +263,15 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 	if err != nil {
 		return nil, err
 	}
+
+	lbMeta, err := lbc.collectLBMetadata(lbSvc)
+	if err != nil {
+		return nil, err
+	}
+	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbMeta)
+}
+
+func (lbc *loadBalancerController) collectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
 	metadata := lbSvc.Metadata
 	if len(metadata) == 0 {
 		logrus.Infof("Metadata is empty for the service %v", lbSvc.Name)
@@ -273,12 +283,66 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 		logrus.Infof("Metadata doesn't have LB key for the service %v", lbSvc.Name)
 		return nil, nil
 	}
-
 	lbMeta, err := getLBMetadata(lb)
 	if err != nil {
 		return nil, err
 	}
-	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbMeta)
+
+	if err = lbc.processSelector(lbMeta); err != nil {
+		return nil, err
+	}
+
+	return lbMeta, nil
+}
+
+func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
+	//collect selector based services
+	var rules []Port
+	svcs, err := lbc.metaFetcher.GetServices()
+	if err != nil {
+		return err
+	}
+	for _, lbRule := range lbMeta.PortRules {
+		if lbRule.Selector == "" {
+			rules = append(rules, lbRule)
+			continue
+		}
+		for _, svc := range svcs {
+			if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
+				continue
+			}
+			//fixme: valuate selector first
+			metadata := svc.Metadata
+			if len(metadata) == 0 {
+				continue
+			}
+
+			m := metadata["lb"]
+			if m == nil {
+				continue
+			}
+
+			meta, err := getLBMetadata(m)
+			if err != nil {
+				return err
+			}
+			for _, rule := range meta.PortRules {
+				port := Port{
+					SourcePort:  lbRule.SourcePort,
+					Protocol:    lbRule.Protocol,
+					Path:        rule.Path,
+					Hostname:    rule.Hostname,
+					Service:     rule.Service,
+					TargetPort:  rule.TargetPort,
+					BackendName: rule.BackendName,
+				}
+				rules = append(rules, port)
+			}
+		}
+	}
+
+	lbMeta.PortRules = rules
+	return nil
 }
 
 func (fetcher *rCertificateFetcher) fetchCertificate(certName string) (*config.Certificate, error) {
@@ -312,6 +376,10 @@ func getServiceHealthCheck(svc *metadata.Service) (*config.HealthCheck, error) {
 		return nil, nil
 	}
 	return getConfigServiceHealthCheck(svc.HealthCheck)
+}
+
+func (mf rMetaFetcher) GetServices() ([]metadata.Service, error) {
+	return mf.metadataClient.GetServices()
 }
 
 func (mf rMetaFetcher) GetService(svcName string, stackName string) (*metadata.Service, error) {
