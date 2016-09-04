@@ -83,14 +83,13 @@ backend customUUID
 func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	customConfigMap := make(map[string]sort.StringSlice)
 	var key string
-	var globalKey string
 	defaultConfig := GetDefaultConfig()
 	serverPrefix := "server $IP"
 	for _, conf := range strings.Split(customConfig, "\n") {
 		conf = strings.TrimSpace(conf)
 		keys := strings.SplitN(conf, " ", 2)
-		globalKey = keys[0]
-		if strings.EqualFold(globalKey, "backend") || strings.HasPrefix(conf, serverPrefix) || strings.EqualFold(globalKey, "frontend") || strings.EqualFold(globalKey, "global") || strings.EqualFold(globalKey, "defaults") {
+		prefix := keys[0]
+		if strings.EqualFold(prefix, "backend") || strings.HasPrefix(conf, serverPrefix) || strings.EqualFold(prefix, "frontend") || strings.EqualFold(prefix, "global") || strings.EqualFold(prefix, "defaults") || strings.EqualFold(prefix, "listen") {
 			//server config comes in one line, so process it differently
 			if strings.HasPrefix(conf, serverPrefix) {
 				// the key would be a backend at this point
@@ -104,17 +103,18 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 				customConfigMap[backendKey] = append(customConfigMap[backendKey], backendValue)
 				continue
 			} else if len(keys) > 1 {
-				key = keys[1]
+				key = fmt.Sprintf("%s %s", strings.TrimSpace(keys[0]), strings.TrimSpace(keys[1]))
 			} else {
-				key = globalKey
+				key = prefix
 			}
 			continue
 		}
 		customConfigMap[key] = append(customConfigMap[key], conf)
 		//exclude values from defalt configs if they are present in custom
-		for k := range defaultConfig[globalKey] {
+
+		for k := range defaultConfig[key] {
 			if strings.HasPrefix(conf, k) {
-				delete(defaultConfig[globalKey], k)
+				delete(defaultConfig[key], k)
 			}
 		}
 	}
@@ -126,9 +126,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			customConfigMap[k] = append(customConfigMap[k], value)
 		}
 	}
-
-	lbConfig.Config = fmt.Sprintf("global\n%s\n\ndefaults\n%s", confToString(customConfigMap["global"]), confToString(customConfigMap["defaults"]))
-
+	processedConfigs := make(map[string]string)
 	for _, fe := range lbConfig.FrontendServices {
 		var policy *config.StickinessPolicy
 		policyNotNull := lbConfig.StickinessPolicy != nil && lbConfig.StickinessPolicy.Mode != ""
@@ -136,7 +134,9 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 		if policyNotNull && policyProto {
 			policy = lbConfig.StickinessPolicy
 		}
-		fe.Config = confToString(customConfigMap[fe.Name])
+		feConfigName := fmt.Sprintf("%s %s", "frontend", fe.Name)
+		fe.Config = confToString(customConfigMap[feConfigName])
+		processedConfigs[feConfigName] = ""
 		for _, be := range fe.BackendServices {
 			healthcheck := false
 			if be.HealthCheck != nil && be.HealthCheck.Port > 0 {
@@ -144,7 +144,9 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			}
 
 			beConfig := sort.StringSlice{}
-			beConfig = append(beConfig, customConfigMap[be.UUID]...)
+			beConfigName := fmt.Sprintf("%s %s", "backend", be.UUID)
+			processedConfigs[beConfigName] = ""
+			beConfig = append(beConfig, customConfigMap[beConfigName]...)
 			beConfig = append(beConfig, customConfigMap["backend"]...)
 			be.Config = confToString(beConfig)
 			//append healthcheck
@@ -176,7 +178,9 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			}
 
 			for _, ep := range be.Endpoints {
-				ep.Config = confToString(customConfigMap[fmt.Sprintf("%s_$IP", be.UUID)])
+				epConfigName := fmt.Sprintf("%s_$IP", beConfigName)
+				ep.Config = confToString(customConfigMap[epConfigName])
+				processedConfigs[epConfigName] = ""
 				//append health check
 				if healthcheck {
 					hc := fmt.Sprintf("check port %v inter %v rise %v fall %v", be.HealthCheck.Port, be.HealthCheck.Interval, be.HealthCheck.HealthyThreshold, be.HealthCheck.UnhealthyThreshold)
@@ -189,6 +193,19 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			}
 		}
 	}
+
+	// append non-processed config
+	var extraConfig string
+	for k, v := range customConfigMap {
+		if strings.EqualFold(k, "global") || strings.EqualFold(k, "backend") || strings.EqualFold(k, "defaults") {
+			continue
+		}
+		if _, ok := processedConfigs[k]; !ok {
+			extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v))
+		}
+	}
+
+	lbConfig.Config = fmt.Sprintf("global\n%s\n\ndefaults\n%s\n%s", confToString(customConfigMap["global"]), confToString(customConfigMap["defaults"]), extraConfig)
 
 	return nil
 }

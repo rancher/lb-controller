@@ -25,7 +25,7 @@ type SelectorConstraintIn struct {
 
 func (s SelectorConstraintIn) IsSelectorMatch(labels map[string]string) bool {
 	var found bool
-	for k, _ := range labels {
+	for k := range labels {
 		if strings.EqualFold(k, s.Key) {
 			for _, v := range s.Value {
 				if strings.EqualFold(labels[k], v) {
@@ -45,7 +45,7 @@ type SelectorConstraintNotIn struct {
 
 func (s SelectorConstraintNotIn) IsSelectorMatch(labels map[string]string) bool {
 	var found bool
-	for k, _ := range labels {
+	for k := range labels {
 		if strings.EqualFold(k, s.Key) {
 			for _, v := range s.Value {
 				if !strings.EqualFold(labels[k], v) {
@@ -65,7 +65,7 @@ type SelectorConstraintEq struct {
 
 func (s SelectorConstraintEq) IsSelectorMatch(labels map[string]string) bool {
 	var found bool
-	for k, _ := range labels {
+	for k := range labels {
 		if strings.EqualFold(k, s.Key) {
 			if strings.EqualFold(labels[k], s.Value) {
 				found = true
@@ -83,7 +83,7 @@ type SelectorConstraintNEq struct {
 
 func (s SelectorConstraintNEq) IsSelectorMatch(labels map[string]string) bool {
 	var found bool
-	for k, _ := range labels {
+	for k := range labels {
 		if strings.EqualFold(k, s.Key) {
 			if !strings.EqualFold(labels[k], s.Value) {
 				found = true
