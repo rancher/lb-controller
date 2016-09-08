@@ -10,7 +10,7 @@ source $(dirname $0)/version
 cd $(dirname $0)/../package
 
 TAG=${TAG:-${VERSION}${SUFFIX}}
-REPO=${REPO:-alena1108}
+REPO=${REPO:-rancher}
 
 for dir in */
 do
@@ -19,7 +19,7 @@ do
     cp ../../bin/lb-controller .
     cp -r ../../provider/${provider_type}/scripts scripts
     cp -r ../../provider/${provider_type}/config config
-    docker build -t ${REPO}/lb-controller-${provider_type}:${TAG} .
-    echo Built ${REPO}/lb-controller-${provider_type}:${TAG}
+    docker build -t ${REPO}/lb-service-${provider_type}:${TAG} .
+    echo Built ${REPO}/lb-service-${provider_type}:${TAG}
     cd ..
 done
