@@ -341,12 +341,33 @@ func (lbp *LBProvider) update(lbConfig *config.LoadBalancerConfig, lb *client.Lo
 
 	if certUpdate {
 		rancherCertID, err := lbp.getRancherCertID(lbConfig)
+		logrus.Infof("Updating Rancher LB with the new cert [%s] ", rancherCertID)
 		if err != nil {
 			return err
 		}
-		logrus.Infof("Updating Rancher LB with the new cert [%s] ", rancherCertID)
+
 		toUpdate["defaultCertificateId"] = rancherCertID
 	}
+
+	newGlobal, newDefaults, err := lbp.getCustomHaproxyConfig(lbConfig)
+	if err != nil {
+		return err
+	}
+
+	configUpdate := lbp.needConfigUpdate(lb, newGlobal, newDefaults)
+
+	if configUpdate {
+		logrus.Infof("Updating Rancher LB with the new config global:[%s], defaults:[%s]", newGlobal, newDefaults)
+		haproxyConfig := &client.HaproxyConfig{
+			Defaults: newDefaults,
+			Global:   newGlobal,
+		}
+		config := &client.LoadBalancerConfig{
+			HaproxyConfig: haproxyConfig,
+		}
+		toUpdate["loadBalancerConfig"] = config
+	}
+
 	if len(toUpdate) > 0 {
 		if _, err = lbp.client.LoadBalancerService.Update(lb, toUpdate); err != nil {
 			return fmt.Errorf("Failed to update lb [%s]. Error: %#v", lb.Name, err)
@@ -354,6 +375,41 @@ func (lbp *LBProvider) update(lbConfig *config.LoadBalancerConfig, lb *client.Lo
 		}
 	}
 	return nil
+}
+
+func (lbp *LBProvider) getCustomHaproxyConfig(lbConfig *config.LoadBalancerConfig) (string, string, error) {
+	global := ""
+	defaults := ""
+	flag := ""
+	for _, c := range strings.Split(lbConfig.Config, "\n") {
+		conf := strings.TrimSpace(c)
+		if strings.HasPrefix(conf, "defaults") {
+			flag = "defaults"
+			continue
+		} else if strings.HasPrefix(conf, "global") {
+			flag = "global"
+			continue
+		}
+
+		if flag == "global" {
+			global = fmt.Sprintf("%s%s\n", global, conf)
+		} else if flag == "defaults" {
+			defaults = fmt.Sprintf("%s%s\n", defaults, conf)
+		}
+	}
+	return global, defaults, nil
+}
+
+func (lbp *LBProvider) needConfigUpdate(lb *client.LoadBalancerService, newGlobal string, newDefaults string) bool {
+	oldGlobal := ""
+	oldDefaults := ""
+	config := lb.LoadBalancerConfig
+	if config != nil && config.HaproxyConfig != nil {
+		oldDefaults = config.HaproxyConfig.Defaults
+		oldGlobal = config.HaproxyConfig.Global
+	}
+
+	return oldGlobal != newGlobal || oldDefaults != newDefaults
 }
 
 func (lbp *LBProvider) needCertUpdate(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) (bool, error) {
@@ -402,7 +458,7 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	}
 	// legacy code where "-" was used as a separator
 	fmtName = lbp.formatLBName(lbConfigName, true)
-	logrus.Infof("Fetching service by name %v", fmtName)
+	logrus.Infof("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
 }
 
@@ -444,6 +500,8 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 		}
 		return lb, nil
 	}
+
+	logrus.Info("Creating lb service")
 
 	// private port will be overritten by ports
 	// in hostname routing rules
@@ -621,14 +679,14 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 					}
 				}
 				if !exists {
-					logrus.Infof("port %v either doesn't exist, or has different hostname routing rules", newPort)
+					logrus.Infof("port [%v] either doesn't exist, or has different hostname routing rules", newPort)
 					setServiceLinks = true
 					break
 				}
 			}
 		}
 		if !linkExists {
-			logrus.Info("Link to service id %v doesn't exist", newLink.ServiceId)
+			logrus.Infof("Link to service id [%v] doesn't exist", newLink.ServiceId)
 			setServiceLinks = true
 			break
 		}

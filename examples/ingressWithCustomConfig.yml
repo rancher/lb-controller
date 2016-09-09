@@ -1,0 +1,10 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test
+  annotations:
+    config: "defaults\n balance source\nglobal\nmaxconnrate 60"
+spec:
+  backend:
+    serviceName: nginx-service
+    servicePort: 80
