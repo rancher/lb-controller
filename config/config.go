@@ -32,6 +32,7 @@ type LoadBalancerConfig struct {
 	Name             string
 	Scale            int
 	FrontendServices []*FrontendService
+	Config           string
 }
 
 type Certificate struct {
