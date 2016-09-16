@@ -442,6 +442,7 @@ func (lbc *loadBalancerController) GetLBConfigs() []*config.LoadBalancerConfig {
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
 			Scale:            scale,
 			FrontendServices: frontEndServices,
+			Config:           params["config"],
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
 	}

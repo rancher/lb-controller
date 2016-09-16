@@ -113,12 +113,12 @@ func (lbp *LBProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 		return err
 	}
 
-	// 2.update with certificate if needed
-	if err = lbp.updateCertificate(lbConfig, lb); err != nil {
+	// 2.update lb (if needed)
+	if err = lbp.update(lbConfig, lb); err != nil {
 		return err
 	}
 
-	// 3.set service links
+	// 3.set service links (if needed)
 	if err = lbp.setServiceLinks(lb, lbConfig); err != nil {
 		return err
 	}
@@ -332,22 +332,92 @@ func (lbp *LBProvider) createCertificate(cert *config.Certificate) (*client.Cert
 	return rancherCert, nil
 }
 
-func (lbp *LBProvider) updateCertificate(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) error {
-	rancherCertID, err := lbp.getRancherCertID(lbConfig)
+func (lbp *LBProvider) update(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) error {
+	toUpdate := make(map[string]interface{})
+	certUpdate, err := lbp.needCertUpdate(lbConfig, lb)
 	if err != nil {
 		return err
 	}
-	if lb.DefaultCertificateId != rancherCertID {
-		lb.DefaultCertificateId = rancherCertID
+
+	if certUpdate {
+		rancherCertID, err := lbp.getRancherCertID(lbConfig)
 		logrus.Infof("Updating Rancher LB with the new cert [%s] ", rancherCertID)
-		_, err = lbp.client.LoadBalancerService.Update(lb, map[string]interface{}{
-			"defaultCertificateId": rancherCertID,
-		})
 		if err != nil {
-			return fmt.Errorf("Failed to update lb [%s] with a new certificate [%s]. Error: %#v", lb.Name, rancherCertID, err)
+			return err
+		}
+
+		toUpdate["defaultCertificateId"] = rancherCertID
+	}
+
+	newGlobal, newDefaults, err := lbp.getCustomHaproxyConfig(lbConfig)
+	if err != nil {
+		return err
+	}
+
+	configUpdate := lbp.needConfigUpdate(lb, newGlobal, newDefaults)
+
+	if configUpdate {
+		logrus.Infof("Updating Rancher LB with the new config global:[%s], defaults:[%s]", newGlobal, newDefaults)
+		haproxyConfig := &client.HaproxyConfig{
+			Defaults: newDefaults,
+			Global:   newGlobal,
+		}
+		config := &client.LoadBalancerConfig{
+			HaproxyConfig: haproxyConfig,
+		}
+		toUpdate["loadBalancerConfig"] = config
+	}
+
+	if len(toUpdate) > 0 {
+		if _, err = lbp.client.LoadBalancerService.Update(lb, toUpdate); err != nil {
+			return fmt.Errorf("Failed to update lb [%s]. Error: %#v", lb.Name, err)
+
 		}
 	}
 	return nil
+}
+
+func (lbp *LBProvider) getCustomHaproxyConfig(lbConfig *config.LoadBalancerConfig) (string, string, error) {
+	global := ""
+	defaults := ""
+	flag := ""
+	for _, c := range strings.Split(lbConfig.Config, "\n") {
+		conf := strings.TrimSpace(c)
+		if strings.HasPrefix(conf, "defaults") {
+			flag = "defaults"
+			continue
+		} else if strings.HasPrefix(conf, "global") {
+			flag = "global"
+			continue
+		}
+
+		if flag == "global" {
+			global = fmt.Sprintf("%s%s\n", global, conf)
+		} else if flag == "defaults" {
+			defaults = fmt.Sprintf("%s%s\n", defaults, conf)
+		}
+	}
+	return global, defaults, nil
+}
+
+func (lbp *LBProvider) needConfigUpdate(lb *client.LoadBalancerService, newGlobal string, newDefaults string) bool {
+	oldGlobal := ""
+	oldDefaults := ""
+	config := lb.LoadBalancerConfig
+	if config != nil && config.HaproxyConfig != nil {
+		oldDefaults = config.HaproxyConfig.Defaults
+		oldGlobal = config.HaproxyConfig.Global
+	}
+
+	return oldGlobal != newGlobal || oldDefaults != newDefaults
+}
+
+func (lbp *LBProvider) needCertUpdate(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) (bool, error) {
+	rancherCertID, err := lbp.getRancherCertID(lbConfig)
+	if err != nil {
+		return false, err
+	}
+	return lb.DefaultCertificateId != rancherCertID, nil
 }
 
 func (lbp *LBProvider) cleanupLBService(lb *client.LoadBalancerService, lbConfig *config.LoadBalancerConfig) *client.LoadBalancerService {
@@ -388,7 +458,7 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	}
 	// legacy code where "-" was used as a separator
 	fmtName = lbp.formatLBName(lbConfigName, true)
-	logrus.Infof("Fetching service by name %v", fmtName)
+	logrus.Infof("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
 }
 
@@ -430,6 +500,8 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 		}
 		return lb, nil
 	}
+
+	logrus.Info("Creating lb service")
 
 	// private port will be overritten by ports
 	// in hostname routing rules
@@ -544,7 +616,7 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 		return err
 	}
 	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
-
+	var newLinks []*client.LoadBalancerServiceLink
 	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
 		svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
 		if err != nil {
@@ -562,6 +634,8 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 			port = fmt.Sprintf("%s=%s", bcknd.Host, bckndPort)
 		} else if bcknd.Path != "" {
 			port = fmt.Sprintf("%s=%s", bcknd.Path, bckndPort)
+		} else if bckndPort != "" {
+			port = bckndPort
 		}
 		ports = append(ports, port)
 
@@ -570,13 +644,62 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 			Ports:     ports,
 		}
 		serviceLinks.ServiceLinks = append(serviceLinks.ServiceLinks, link)
-
+		newLinks = append(newLinks, link)
 	}
 
-	_, err = lbp.client.LoadBalancerService.ActionSetservicelinks(lb, serviceLinks)
+	setServiceLinks := false
+	// get existing links
+	existingLinks, err := lbp.GetServiceLinks(lb)
 	if err != nil {
-		return fmt.Errorf("Failed to set service links for lb [%s]. Error: %#v", lb.Name, err)
+		return err
 	}
+	if len(existingLinks) != len(newLinks) {
+		setServiceLinks = true
+		logrus.Info("Number of new service links is different from existing")
+	}
+
+	for _, newLink := range newLinks {
+		linkExists := false
+		for _, existingLink := range existingLinks {
+			if newLink.ServiceId != existingLink.ConsumedServiceId {
+				continue
+			}
+			linkExists = true
+			if len(existingLink.Ports) != len(newLink.Ports) {
+				logrus.Info("Number of new service ports is different from existing")
+				setServiceLinks = true
+				break
+			}
+			for _, newPort := range newLink.Ports {
+				exists := false
+				for _, existingPort := range existingLink.Ports {
+					if newPort == existingPort {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					logrus.Infof("port [%v] either doesn't exist, or has different hostname routing rules", newPort)
+					setServiceLinks = true
+					break
+				}
+			}
+		}
+		if !linkExists {
+			logrus.Infof("Link to service id [%v] doesn't exist", newLink.ServiceId)
+			setServiceLinks = true
+			break
+		}
+	}
+
+	if setServiceLinks {
+		logrus.Info("Resetting service links")
+		_, err = lbp.client.LoadBalancerService.ActionSetservicelinks(lb, serviceLinks)
+		if err != nil {
+			return fmt.Errorf("Failed to set service links for lb [%s]. Error: %#v", lb.Name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -623,6 +746,18 @@ func (lbp *LBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.
 		return nil, fmt.Errorf("Couldn't reload LB [%s]. Error: %#v", lb.Name, err)
 	}
 	return lb, nil
+}
+
+func (lbp *LBProvider) GetServiceLinks(lb *client.LoadBalancerService) ([]client.ServiceConsumeMap, error) {
+	opts := client.NewListOpts()
+	opts.Filters["removed_null"] = "1"
+	opts.Filters["serviceId"] = lb.Id
+	links, err := lbp.client.ServiceConsumeMap.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("Coudln't fetch service links. Error: %#v", err)
+	}
+
+	return links.Data, nil
 }
 
 func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) {
