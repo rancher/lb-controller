@@ -1,0 +1,6 @@
+global
+   maxconn 3096
+
+defaults
+   retries 5
+   mode http

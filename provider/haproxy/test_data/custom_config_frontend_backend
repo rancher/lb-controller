@@ -1,0 +1,7 @@
+frontend foo
+    description my frontend
+    grace 1000
+
+backend bar
+    description my backend
+    grace 90

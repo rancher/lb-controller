@@ -1,0 +1,4 @@
+    description my backend foo
+    grace 1000
+    http-request add-header X-Forwarded-Port %[dst_port]
+    http-request add-header X-Forwarded-Proto https if { ssl_fc }

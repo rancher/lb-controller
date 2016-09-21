@@ -1,0 +1,15 @@
+global
+   maxconn 3096
+
+defaults
+   retries 5
+   mode http
+
+frontend custom
+    bind *:80
+    mode http
+    default_backend nodes
+
+frontend foo
+    description my frontend
+    grace 1000

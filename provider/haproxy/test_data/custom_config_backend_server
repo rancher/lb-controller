@@ -1,0 +1,8 @@
+backend foo
+    description my backend foo
+    grace 1000
+    server $IP ssl
+
+backend foofoo
+    description my backend foofoo
+    grace 90

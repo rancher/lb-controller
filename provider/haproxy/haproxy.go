@@ -1,4 +1,4 @@
-package provider
+package haproxy
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ func init() {
 		Template:  "/etc/haproxy/haproxy_template.cfg",
 		CertDir:   "/etc/haproxy/certs",
 	}
-	lbp := HAProxyProvider{
+	lbp := Provider{
 		cfg:    haproxyCfg,
 		stopCh: make(chan struct{}),
 		init:   true,
@@ -30,7 +30,7 @@ func init() {
 	provider.RegisterProvider(lbp.GetName(), &lbp)
 }
 
-type HAProxyProvider struct {
+type Provider struct {
 	cfg    *haproxyConfig
 	stopCh chan struct{}
 	init   bool
@@ -89,7 +89,7 @@ func (cfg *haproxyConfig) write(lbConfig *config.LoadBalancerConfig) (err error)
 	return err
 }
 
-func (lbp *HAProxyProvider) applyHaproxyConfig(lbConfig *config.LoadBalancerConfig, reset bool) error {
+func (lbp *Provider) applyHaproxyConfig(lbConfig *config.LoadBalancerConfig, reset bool) error {
 	// copy certificates
 	if _, err := os.Stat(lbp.cfg.CertDir); os.IsNotExist(err) {
 		if err = os.Mkdir(lbp.cfg.CertDir, 0644); err != nil {
@@ -135,7 +135,7 @@ func (lbp *HAProxyProvider) applyHaproxyConfig(lbConfig *config.LoadBalancerConf
 	return lbp.cfg.reload()
 }
 
-func (lbp *HAProxyProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
+func (lbp *Provider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 	//check if the config is being resetting
 	for i := 0; i < 5; i++ {
 		if lbp.init {
@@ -147,11 +147,11 @@ func (lbp *HAProxyProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) err
 	return fmt.Errorf("Failed to wait for %s to exit init stage", lbp.GetName())
 }
 
-func (lbp *HAProxyProvider) GetName() string {
+func (lbp *Provider) GetName() string {
 	return "haproxy"
 }
 
-func (lbp *HAProxyProvider) GetPublicEndpoints(configName string) []string {
+func (lbp *Provider) GetPublicEndpoints(configName string) []string {
 	epStr := []string{}
 	return epStr
 }
@@ -176,27 +176,27 @@ func (cfg *haproxyConfig) reload() error {
 	return nil
 }
 
-func (lbp *HAProxyProvider) CleanupConfig(name string) error {
+func (lbp *Provider) CleanupConfig(name string) error {
 	return lbp.applyHaproxyConfig(&config.LoadBalancerConfig{}, true)
 }
 
-func (lbp *HAProxyProvider) IsHealthy() bool {
+func (lbp *Provider) IsHealthy() bool {
 	return true
 }
 
-func (lbp *HAProxyProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
+func (lbp *Provider) Run(syncEndpointsQueue *utils.TaskQueue) {
 	// cleanup the config
 	lbp.CleanupConfig("")
 	lbp.init = false
 	<-lbp.stopCh
 }
 
-func (lbp *HAProxyProvider) Stop() error {
+func (lbp *Provider) Stop() error {
 	logrus.Infof("Shutting down provider %v", lbp.GetName())
 	close(lbp.stopCh)
 	return lbp.CleanupConfig("")
 }
 
-func (lbp *HAProxyProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
+func (lbp *Provider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return BuildCustomConfig(lbConfig, customConfig)
 }
