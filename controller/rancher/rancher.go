@@ -112,6 +112,14 @@ func (lbc *loadBalancerController) Stop() error {
 
 func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta *LBMetadata) ([]*config.LoadBalancerConfig, error) {
 	lbConfigs := []*config.LoadBalancerConfig{}
+	if lbMeta == nil {
+		lbMeta = &LBMetadata{
+			PortRules:   make([]Port, 0),
+			Certs:       make([]string, 0),
+			DefaultCert: "",
+			Config:      "",
+		}
+	}
 	frontendsMap := map[string]*config.FrontendService{}
 	// fetch certificates
 	certs := []*config.Certificate{}
@@ -268,19 +276,20 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 	if err != nil {
 		return nil, err
 	}
+
 	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbMeta)
 }
 
 func (lbc *loadBalancerController) collectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
 	metadata := lbSvc.Metadata
 	if len(metadata) == 0 {
-		logrus.Infof("Metadata is empty for the service %v", lbSvc.Name)
+		logrus.Debugf("Metadata is empty for the service %v", lbSvc.Name)
 		return nil, nil
 	}
 
 	lb := metadata["lb"]
 	if lb == nil {
-		logrus.Infof("Metadata doesn't have LB key for the service %v", lbSvc.Name)
+		logrus.Debugf("Metadata doesn't have LB key for the service %v", lbSvc.Name)
 		return nil, nil
 	}
 	lbMeta, err := getLBMetadata(lb)

@@ -23,5 +23,9 @@ RUN mkdir /var/log/haproxy
 RUN touch /var/log/haproxy/traffic /var/log/haproxy/events /var/log/haproxy/errors
 RUN cat /etc/haproxy/logrotate.cfg >> /etc/logrotate.d/haproxy
 
-ENTRYPOINT ["lb-controller"]
-CMD ["--controller", "rancher", "--provider", "haproxy"]
+ENV TINI_VERSION v0.10.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+ENTRYPOINT ["/tini", "--"]
+
+CMD ["lb-controller", "--controller", "rancher", "--provider",  "haproxy"]

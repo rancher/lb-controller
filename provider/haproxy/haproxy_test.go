@@ -13,7 +13,7 @@ var lbp Provider
 func init() {
 	haproxyCfg := &haproxyConfig{
 		ReloadCmd: "haproxy_reload /etc/haproxy/haproxy.cfg reload",
-		ResetCmd:  "haproxy_reload /etc/haproxy/haproxy.cfg reset",
+		StartCmd:  "haproxy_reload /etc/haproxy/haproxy.cfg start",
 		Config:    "/etc/haproxy/haproxy_new.cfg",
 		Template:  "/etc/haproxy/haproxy_template.cfg",
 		CertDir:   "/etc/haproxy/certs",

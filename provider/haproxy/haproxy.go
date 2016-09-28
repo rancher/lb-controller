@@ -17,7 +17,7 @@ import (
 func init() {
 	haproxyCfg := &haproxyConfig{
 		ReloadCmd: "haproxy_reload /etc/haproxy/haproxy.cfg reload",
-		ResetCmd:  "haproxy_reload /etc/haproxy/haproxy.cfg reset",
+		StartCmd:  "haproxy_reload /etc/haproxy/haproxy.cfg start",
 		Config:    "/etc/haproxy/haproxy_new.cfg",
 		Template:  "/etc/haproxy/haproxy_template.cfg",
 		CertDir:   "/etc/haproxy/certs",
@@ -39,7 +39,7 @@ type Provider struct {
 type haproxyConfig struct {
 	Name      string
 	ReloadCmd string
-	ResetCmd  string
+	StartCmd  string
 	Config    string
 	Template  string
 	CertDir   string
@@ -89,7 +89,7 @@ func (cfg *haproxyConfig) write(lbConfig *config.LoadBalancerConfig) (err error)
 	return err
 }
 
-func (lbp *Provider) applyHaproxyConfig(lbConfig *config.LoadBalancerConfig, reset bool) error {
+func (lbp *Provider) applyHaproxyConfig(lbConfig *config.LoadBalancerConfig) error {
 	// copy certificates
 	if _, err := os.Stat(lbp.cfg.CertDir); os.IsNotExist(err) {
 		if err = os.Mkdir(lbp.cfg.CertDir, 0644); err != nil {
@@ -129,20 +129,18 @@ func (lbp *Provider) applyHaproxyConfig(lbConfig *config.LoadBalancerConfig, res
 	if err := lbp.cfg.write(lbConfig); err != nil {
 		return err
 	}
-	if reset {
-		return lbp.cfg.reset()
-	}
+
 	return lbp.cfg.reload()
 }
 
 func (lbp *Provider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
-	//check if the config is being resetting
+	//check if the config is being starting
 	for i := 0; i < 5; i++ {
 		if lbp.init {
 			time.Sleep(time.Second * time.Duration(1))
 			continue
 		}
-		return lbp.applyHaproxyConfig(lbConfig, false)
+		return lbp.applyHaproxyConfig(lbConfig)
 	}
 	return fmt.Errorf("Failed to wait for %s to exit init stage", lbp.GetName())
 }
@@ -156,12 +154,12 @@ func (lbp *Provider) GetPublicEndpoints(configName string) []string {
 	return epStr
 }
 
-func (cfg *haproxyConfig) reset() error {
-	output, err := exec.Command("sh", "-c", cfg.ResetCmd).CombinedOutput()
+func (cfg *haproxyConfig) start() error {
+	output, err := exec.Command("sh", "-c", cfg.StartCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	logrus.Info(msg)
 	if err != nil {
-		return fmt.Errorf("error restarting %v: %v", msg, err)
+		return fmt.Errorf("error starting %v: %v", msg, err)
 	}
 	return nil
 }
@@ -171,13 +169,13 @@ func (cfg *haproxyConfig) reload() error {
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	logrus.Info(msg)
 	if err != nil {
-		return fmt.Errorf("error restarting %v: %v", msg, err)
+		return fmt.Errorf("error reloading %v: %v", msg, err)
 	}
 	return nil
 }
 
-func (lbp *Provider) CleanupConfig(name string) error {
-	return lbp.applyHaproxyConfig(&config.LoadBalancerConfig{}, true)
+func (lbp *Provider) StartHaproxy() error {
+	return lbp.cfg.start()
 }
 
 func (lbp *Provider) IsHealthy() bool {
@@ -185,8 +183,7 @@ func (lbp *Provider) IsHealthy() bool {
 }
 
 func (lbp *Provider) Run(syncEndpointsQueue *utils.TaskQueue) {
-	// cleanup the config
-	lbp.CleanupConfig("")
+	lbp.StartHaproxy()
 	lbp.init = false
 	<-lbp.stopCh
 }
@@ -194,9 +191,13 @@ func (lbp *Provider) Run(syncEndpointsQueue *utils.TaskQueue) {
 func (lbp *Provider) Stop() error {
 	logrus.Infof("Shutting down provider %v", lbp.GetName())
 	close(lbp.stopCh)
-	return lbp.CleanupConfig("")
+	return nil
 }
 
 func (lbp *Provider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return BuildCustomConfig(lbConfig, customConfig)
+}
+
+func (lbp *Provider) CleanupConfig(name string) error {
+	return nil
 }
