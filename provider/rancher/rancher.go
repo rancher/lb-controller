@@ -617,6 +617,8 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 	}
 	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
 	var newLinks []*client.LoadBalancerServiceLink
+
+	svcToPorts := make(map[string][]string)
 	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
 		svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
 		if err != nil {
@@ -626,6 +628,9 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 			return fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
 		}
 		ports := []string{}
+		if _, ok := svcToPorts[svc.Id]; ok {
+			ports = svcToPorts[svc.Id]
+		}
 		var port string
 		bckndPort := strconv.Itoa(bcknd.Port)
 		if bcknd.Host != "" && bcknd.Path != "" {
@@ -638,9 +643,12 @@ func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig 
 			port = bckndPort
 		}
 		ports = append(ports, port)
+		svcToPorts[svc.Id] = ports
+	}
 
+	for svcID, ports := range svcToPorts {
 		link := &client.LoadBalancerServiceLink{
-			ServiceId: svc.Id,
+			ServiceId: svcID,
 			Ports:     ports,
 		}
 		serviceLinks.ServiceLinks = append(serviceLinks.ServiceLinks, link)
