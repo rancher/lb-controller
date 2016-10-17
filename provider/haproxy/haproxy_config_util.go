@@ -44,8 +44,8 @@ func GetDefaultConfig() map[string]map[string]string {
 	defaults["log "] = "global"
 	defaults["option "] = "tcplog"
 
-	backend["http-request add-header X-Forwarded-Proto "] = "https if { ssl_fc }"
-	backend["http-request add-header X-Forwarded-Port "] = "%[dst_port]"
+	backend["http-request add-header X-Forwarded-Proto "] = "https if { ssl_fc } forwarded_proto"
+	backend["http-request add-header X-Forwarded-Port "] = "%[dst_port] if forwarded_port"
 
 	config := make(map[string]map[string]string)
 	config["defaults"] = defaults

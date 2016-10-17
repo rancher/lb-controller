@@ -1,4 +1,4 @@
     description my backend
     grace 90
-    http-request add-header X-Forwarded-Port %[dst_port]
-    http-request add-header X-Forwarded-Proto https if { ssl_fc }
+    http-request add-header X-Forwarded-Port %[dst_port] if forwarded_port
+    http-request add-header X-Forwarded-Proto https if { ssl_fc } forwarded_proto
