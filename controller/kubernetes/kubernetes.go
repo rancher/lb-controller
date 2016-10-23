@@ -57,6 +57,10 @@ func init() {
 	controller.RegisterController(lbc.GetName(), lbc)
 }
 
+func (lbc *loadBalancerController) Init() {
+	return
+}
+
 type loadBalancerController struct {
 	client         *client.Client
 	ingController  *framework.Controller

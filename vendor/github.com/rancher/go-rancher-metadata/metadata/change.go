@@ -6,7 +6,7 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-func (m *Client) OnChange(intervalSeconds int, do func(string)) {
+func (m *client) OnChange(intervalSeconds int, do func(string)) {
 	interval := time.Duration(intervalSeconds)
 	version := "init"
 

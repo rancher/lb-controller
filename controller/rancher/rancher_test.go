@@ -31,8 +31,8 @@ type tMetaFetcher struct {
 }
 
 func TestTCPRuleFields(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Protocol:   "tcp",
 		Path:       "/baz",
 		Hostname:   "baz.com",
@@ -58,15 +58,15 @@ func TestTCPRuleFields(t *testing.T) {
 }
 
 func TestTwoRunningServices(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Protocol:   "tcp",
 		Service:    "default/foo",
 		TargetPort: 44,
 		SourcePort: 45,
 	}
 	portRules = append(portRules, port)
-	port = Port{
+	port = metadata.PortRule{
 		Protocol:   "tcp",
 		Service:    "default/baz",
 		TargetPort: 44,
@@ -86,8 +86,8 @@ func TestTwoRunningServices(t *testing.T) {
 }
 
 func TestTwoSourcePorts(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Hostname:   "foo.com",
 		Protocol:   "http",
 		Service:    "default/foo",
@@ -95,7 +95,7 @@ func TestTwoSourcePorts(t *testing.T) {
 		SourcePort: 45,
 	}
 	portRules = append(portRules, port)
-	port = Port{
+	port = metadata.PortRule{
 		Hostname:   "baz.com",
 		Protocol:   "http",
 		Service:    "default/baz",
@@ -122,8 +122,8 @@ func TestTwoSourcePorts(t *testing.T) {
 }
 
 func TestOneSourcePortTwoRules(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Hostname:   "foo.com",
 		Protocol:   "http",
 		Service:    "default/foo",
@@ -131,7 +131,7 @@ func TestOneSourcePortTwoRules(t *testing.T) {
 		SourcePort: 45,
 	}
 	portRules = append(portRules, port)
-	port = Port{
+	port = metadata.PortRule{
 		Hostname:   "baz.com",
 		Protocol:   "http",
 		Service:    "default/baz",
@@ -158,15 +158,15 @@ func TestOneSourcePortTwoRules(t *testing.T) {
 }
 
 func TestStoppedAndRunningInstance(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Protocol:   "tcp",
 		Service:    "default/foo",
 		TargetPort: 44,
 		SourcePort: 45,
 	}
 	portRules = append(portRules, port)
-	port = Port{
+	port = metadata.PortRule{
 		Protocol:   "tcp",
 		Service:    "default/bar",
 		TargetPort: 44,
@@ -186,8 +186,8 @@ func TestStoppedAndRunningInstance(t *testing.T) {
 }
 
 func TestStoppedInstance(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Protocol:   "tcp",
 		Service:    "default/bar",
 		TargetPort: 44,
@@ -207,8 +207,8 @@ func TestStoppedInstance(t *testing.T) {
 }
 
 func TestRuleFields(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		SourcePort:  12,
 		Protocol:    "http",
 		Path:        "/baz",
@@ -289,7 +289,7 @@ func TestRuleFields(t *testing.T) {
 
 func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	var svcs []metadata.Service
-	port := Port{
+	port := metadata.PortRule{
 		Path:        "/baz",
 		Hostname:    "baz.com",
 		TargetPort:  46,
@@ -297,23 +297,20 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 		Service:     "default/baz",
 	}
 
-	var portRules []Port
+	var portRules []metadata.PortRule
 	portRules = append(portRules, port)
 
-	meta := make(map[string]interface{})
-	lbMeta := LBMetadata{
+	lbConfig := metadata.LBConfig{
 		PortRules: portRules,
 	}
-
-	meta["lb"] = lbMeta
 
 	labels := make(map[string]string)
 	labels["foo"] = "bar"
 	svc := metadata.Service{
 		Kind:       "service",
 		Containers: getContainers("selector"),
-		Metadata:   meta,
 		Labels:     labels,
+		LBConfig:   lbConfig,
 	}
 	svcs = append(svcs, svc)
 	return svcs, nil
@@ -435,8 +432,8 @@ func (p *tProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, cus
 }
 
 func TestSelectorNoMatch(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Protocol:   "http",
 		SourcePort: 45,
 		Selector:   "foo1=bar1",
@@ -456,8 +453,8 @@ func TestSelectorNoMatch(t *testing.T) {
 }
 
 func TestSelectorMatch(t *testing.T) {
-	portRules := []Port{}
-	port := Port{
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
 		Protocol:   "http",
 		SourcePort: 45,
 		Selector:   "foo=bar",

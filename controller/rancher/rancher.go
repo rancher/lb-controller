@@ -30,6 +30,40 @@ func init() {
 	controller.RegisterController(lbc.GetName(), lbc)
 }
 
+func (lbc *loadBalancerController) Init() {
+	cattleURL := os.Getenv("CATTLE_URL")
+	if len(cattleURL) == 0 {
+		logrus.Fatalf("CATTLE_URL is not set, fail to init Rancher LB provider")
+	}
+
+	cattleAccessKey := os.Getenv("CATTLE_ACCESS_KEY")
+	if len(cattleAccessKey) == 0 {
+		logrus.Fatalf("CATTLE_ACCESS_KEY is not set, fail to init of Rancher LB provider")
+	}
+
+	cattleSecretKey := os.Getenv("CATTLE_SECRET_KEY")
+	if len(cattleSecretKey) == 0 {
+		logrus.Fatalf("CATTLE_SECRET_KEY is not set, fail to init of Rancher LB provider")
+	}
+
+	opts := &client.ClientOpts{
+		Url:       cattleURL,
+		AccessKey: cattleAccessKey,
+		SecretKey: cattleSecretKey,
+	}
+
+	client, err := client.NewRancherClient(opts)
+	if err != nil {
+		logrus.Fatalf("Failed to create Rancher client %v", err)
+	}
+
+	certFetcher := &rCertificateFetcher{
+		client: client,
+	}
+
+	lbc.certFetcher = certFetcher
+}
+
 type loadBalancerController struct {
 	shutdown                   bool
 	stopCh                     chan struct{}
@@ -50,7 +84,7 @@ type MetadataFetcher interface {
 }
 
 type rMetaFetcher struct {
-	metadataClient *metadata.Client
+	metadataClient metadata.Client
 }
 
 type CertificateFetcher interface {
@@ -114,7 +148,7 @@ func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta
 	lbConfigs := []*config.LoadBalancerConfig{}
 	if lbMeta == nil {
 		lbMeta = &LBMetadata{
-			PortRules:   make([]Port, 0),
+			PortRules:   make([]metadata.PortRule, 0),
 			Certs:       make([]string, 0),
 			DefaultCert: "",
 			Config:      "",
@@ -281,18 +315,13 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 }
 
 func (lbc *loadBalancerController) collectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
-	metadata := lbSvc.Metadata
-	if len(metadata) == 0 {
+	lbConfig := lbSvc.LBConfig
+	if len(lbConfig.PortRules) == 0 {
 		logrus.Debugf("Metadata is empty for the service %v", lbSvc.Name)
 		return nil, nil
 	}
 
-	lb := metadata["lb"]
-	if lb == nil {
-		logrus.Debugf("Metadata doesn't have LB key for the service %v", lbSvc.Name)
-		return nil, nil
-	}
-	lbMeta, err := getLBMetadata(lb)
+	lbMeta, err := getLBMetadata(lbConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +335,7 @@ func (lbc *loadBalancerController) collectLBMetadata(lbSvc metadata.Service) (*L
 
 func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	//collect selector based services
-	var rules []Port
+	var rules []metadata.PortRule
 	svcs, err := lbc.metaFetcher.GetServices()
 	if err != nil {
 		return err
@@ -321,22 +350,17 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 				continue
 			}
 			//fixme: valuate selector first
-			metadata := svc.Metadata
-			if len(metadata) == 0 {
+			lbConfig := svc.LBConfig
+			if len(lbConfig.PortRules) == 0 {
 				continue
 			}
 
-			m := metadata["lb"]
-			if m == nil {
-				continue
-			}
-
-			meta, err := getLBMetadata(m)
+			meta, err := getLBMetadata(lbConfig)
 			if err != nil {
 				return err
 			}
 			for _, rule := range meta.PortRules {
-				port := Port{
+				port := metadata.PortRule{
 					SourcePort:  lbRule.SourcePort,
 					Protocol:    lbRule.Protocol,
 					Path:        rule.Path,
@@ -478,45 +502,10 @@ func (lbc *loadBalancerController) IsHealthy() bool {
 }
 
 func newLoadBalancerController() (*loadBalancerController, error) {
-	cattleURL := os.Getenv("CATTLE_URL")
-	if len(cattleURL) == 0 {
-		logrus.Info("CATTLE_URL is not set, skipping init of Rancher LB provider")
-		return nil, nil
-	}
-
-	cattleAccessKey := os.Getenv("CATTLE_ACCESS_KEY")
-	if len(cattleAccessKey) == 0 {
-		logrus.Info("CATTLE_ACCESS_KEY is not set, skipping init of Rancher LB provider")
-		return nil, nil
-	}
-
-	cattleSecretKey := os.Getenv("CATTLE_SECRET_KEY")
-	if len(cattleSecretKey) == 0 {
-		logrus.Info("CATTLE_SECRET_KEY is not set, skipping init of Rancher LB provider")
-		return nil, nil
-	}
-
-	opts := &client.ClientOpts{
-		Url:       cattleURL,
-		AccessKey: cattleAccessKey,
-		SecretKey: cattleSecretKey,
-	}
-
-	client, err := client.NewRancherClient(opts)
-
-	certFetcher := &rCertificateFetcher{
-		client: client,
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create Rancher client %v", err)
-	}
-
 	lbc := &loadBalancerController{
 		stopCh:                     make(chan struct{}),
 		incrementalBackoff:         0,
 		incrementalBackoffInterval: 5,
-		certFetcher:                certFetcher,
 	}
 	lbc.syncQueue = utils.NewTaskQueue(lbc.sync)
 

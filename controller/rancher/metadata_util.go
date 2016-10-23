@@ -2,23 +2,12 @@ package rancher
 
 import (
 	"encoding/json"
+	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/lb-controller/config"
 )
 
-type Port struct {
-	SourcePort  int    `json:"source_port"`
-	Protocol    string `json:"protocol"`
-	Path        string `json:"path"`
-	Hostname    string `json:"hostname"`
-	Service     string `json:"service"`
-	TargetPort  int    `json:"target_port"`
-	Priority    int    `json:"priority"`
-	BackendName string `json:"backend_name"`
-	Selector    string `json:"selector"`
-}
-
 type LBMetadata struct {
-	PortRules        []Port                  `json:"port_rules"`
+	PortRules        []metadata.PortRule     `json:"port_rules"`
 	Certs            []string                `json:"certs"`
 	DefaultCert      string                  `json:"default_cert"`
 	Config           string                  `json:"config"`
