@@ -57,6 +57,7 @@ type BackendService struct {
 	Config         string
 	HealthCheck    *HealthCheck
 	Priority       int
+	SendProxy      bool
 }
 
 type Endpoint struct {
@@ -72,6 +73,7 @@ type FrontendService struct {
 	BackendServices BackendServices
 	Protocol        string
 	Config          string
+	AcceptProxy     bool
 }
 
 type LoadBalancerConfig struct {

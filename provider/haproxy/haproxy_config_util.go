@@ -12,40 +12,40 @@ func GetDefaultConfig() map[string]map[string]string {
 	global := make(map[string]string)
 	backend := make(map[string]string)
 
-	global["maxconn "] = "4096"
-	global["maxpipes "] = "1024"
-	global["tune.ssl.default-dh-param "] = "2048"
-	global["ssl-default-bind-ciphers "] = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA"
-	global["ssl-default-server-ciphers "] = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA"
-	global["ssl-default-bind-options "] = "no-sslv3 no-tlsv10"
-	global["chroot "] = "/var/lib/haproxy"
-	global["user  "] = "haproxy"
-	global["group "] = "haproxy"
-	global["daemon "] = ""
-	global["log 127.0.0.1:8514 local0 "] = ""
-	global["log 127.0.0.1:8514 local1 "] = "notice"
+	global["maxconn"] = "4096"
+	global["maxpipes"] = "1024"
+	global["tune.ssl.default-dh-param"] = "2048"
+	global["ssl-default-bind-ciphers"] = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA"
+	global["ssl-default-server-ciphers"] = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA"
+	global["ssl-default-bind-options"] = "no-sslv3 no-tlsv10"
+	global["chroot"] = "/var/lib/haproxy"
+	global["user"] = "haproxy"
+	global["group"] = "haproxy"
+	global["daemon"] = ""
+	global["log 127.0.0.1:8514 local0"] = ""
+	global["log 127.0.0.1:8514 local1"] = "notice"
 
-	defaults["mode "] = "tcp"
-	defaults["option redispatch "] = ""
-	defaults["option http-server-close "] = ""
-	defaults["option forwardfor "] = ""
-	defaults["maxconn "] = "4096"
-	defaults["retries "] = "3"
-	defaults["timeout connect "] = "5000"
-	defaults["timeout client "] = "50000"
-	defaults["timeout server "] = "50000"
-	defaults["errorfile 400 "] = "/etc/haproxy/errors/400.http"
-	defaults["errorfile 403 "] = "/etc/haproxy/errors/403.http"
-	defaults["errorfile 408 "] = "/etc/haproxy/errors/408.http"
-	defaults["errorfile 500 "] = "/etc/haproxy/errors/500.http"
-	defaults["errorfile 502 "] = "/etc/haproxy/errors/502.http"
-	defaults["errorfile 503 "] = "/etc/haproxy/errors/503.http"
-	defaults["errorfile 504 "] = "/etc/haproxy/errors/504.http"
-	defaults["log "] = "global"
-	defaults["option "] = "tcplog"
+	defaults["mode"] = "tcp"
+	defaults["option redispatch"] = ""
+	defaults["option http-server-close"] = ""
+	defaults["option forwardfor"] = ""
+	defaults["maxconn"] = "4096"
+	defaults["retries"] = "3"
+	defaults["timeout connect"] = "5000"
+	defaults["timeout client"] = "50000"
+	defaults["timeout server"] = "50000"
+	defaults["errorfile 400"] = "/etc/haproxy/errors/400.http"
+	defaults["errorfile 403"] = "/etc/haproxy/errors/403.http"
+	defaults["errorfile 408"] = "/etc/haproxy/errors/408.http"
+	defaults["errorfile 500"] = "/etc/haproxy/errors/500.http"
+	defaults["errorfile 502"] = "/etc/haproxy/errors/502.http"
+	defaults["errorfile 503"] = "/etc/haproxy/errors/503.http"
+	defaults["errorfile 504"] = "/etc/haproxy/errors/504.http"
+	defaults["log"] = "global"
+	defaults["option"] = "tcplog"
 
-	backend["http-request add-header X-Forwarded-Proto "] = "https if { ssl_fc } forwarded_proto"
-	backend["http-request add-header X-Forwarded-Port "] = "%[dst_port] if forwarded_port"
+	backend["http-request add-header X-Forwarded-Proto"] = "https if { ssl_fc } forwarded_proto"
+	backend["http-request add-header X-Forwarded-Port"] = "%[dst_port] if forwarded_port"
 
 	config := make(map[string]map[string]string)
 	config["defaults"] = defaults
@@ -116,7 +116,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 		//exclude values from defalt configs if they are present in custom
 
 		for k := range defaultConfig[key] {
-			if strings.HasPrefix(conf, k) {
+			if strings.EqualFold(strings.TrimSpace(conf), key) || strings.HasPrefix(strings.TrimSpace(conf), fmt.Sprintf("%s ", k)) {
 				delete(defaultConfig[key], k)
 			}
 		}
@@ -138,7 +138,17 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			policy = lbConfig.StickinessPolicy
 		}
 		feConfigName := fmt.Sprintf("%s %s", "frontend", fe.Name)
-		fe.Config = confToString(customConfigMap[feConfigName])
+		var custom []string
+		for _, value := range customConfigMap[feConfigName] {
+			if strings.EqualFold(value, "accept-proxy") {
+				fe.AcceptProxy = true
+				continue
+			}
+			custom = append(custom, value)
+		}
+
+		//TODO - have to add support for custom bind parameters
+		fe.Config = confToString(custom)
 		processedConfigs[feConfigName] = ""
 		for _, be := range fe.BackendServices {
 			healthcheck := false

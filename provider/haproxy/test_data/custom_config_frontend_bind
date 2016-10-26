@@ -1,0 +1,4 @@
+frontend foo
+    description my frontend
+    grace 1000
+    accept-proxy

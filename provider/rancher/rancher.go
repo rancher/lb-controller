@@ -156,7 +156,7 @@ func (lbp *LBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
 }
 
 func (lbp *LBProvider) syncupEndpoints() error {
-	// FIXME - change to listen to state.change events
+	// TODO - change to listen to state.change events
 	// figure out why events weren't received by this agent account
 	for {
 		time.Sleep(30 * time.Second)

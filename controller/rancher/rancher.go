@@ -349,7 +349,6 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 			if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
 				continue
 			}
-			//fixme: valuate selector first
 			lbConfig := svc.LBConfig
 			if len(lbConfig.PortRules) == 0 {
 				continue
