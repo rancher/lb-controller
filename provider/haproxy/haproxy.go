@@ -84,7 +84,7 @@ func (cfg *haproxyConfig) write(lbConfig *config.LoadBalancerConfig) (err error)
 	conf["frontends"] = frontends
 	conf["backends"] = backends
 	conf["globalConfig"] = lbConfig.Config
-	conf["strictSni"] = lbConfig.DefaultCert
+	conf["strictSni"] = lbConfig.DefaultCert == nil
 	err = t.Execute(w, conf)
 	return err
 }
