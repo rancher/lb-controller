@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-rancher-metadata/metadata"
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
@@ -395,7 +395,6 @@ func (fetcher *rCertificateFetcher) fetchCertificate(certName string) (*config.C
 		cert = certs.Data[0]
 		certWithChain = fmt.Sprintf("%s\n%s", cert.Cert, cert.CertChain)
 	}
-
 	return &config.Certificate{
 		Name: cert.Name,
 		Key:  cert.Key,
