@@ -1,0 +1,5 @@
+global
+   maxconnrate 100
+
+defaults
+   balance source

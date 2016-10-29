@@ -12,9 +12,14 @@ cd $(dirname $0)/../package
 TAG=${TAG:-${VERSION}${SUFFIX}}
 REPO=${REPO:-rancher}
 
-cp ../bin/lb-controller .
-cp ../provider/haproxy/{haproxy_reload,haproxy_template.cfg} .
-
-docker build -t ${REPO}/lb-controller:${TAG} .
-
-echo Built ${REPO}/lb-controller:${TAG}
+for dir in */
+do
+    cd $dir
+    provider_type=${dir%/}
+    cp ../../bin/lb-controller .
+    cp -r ../../provider/${provider_type}/scripts scripts
+    cp -r ../../provider/${provider_type}/config config
+    docker build -t ${REPO}/lb-service-${provider_type}:${TAG} .
+    echo Built ${REPO}/lb-service-${provider_type}:${TAG}
+    cd ..
+done

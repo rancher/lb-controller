@@ -16,6 +16,7 @@ type LBProvider interface {
 	Run(syncEndpointsQueue *utils.TaskQueue)
 	Stop() error
 	IsHealthy() bool
+	ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error
 }
 
 var (

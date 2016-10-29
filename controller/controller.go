@@ -7,10 +7,11 @@ import (
 )
 
 type LBController interface {
+	Init()
 	GetName() string
 	Run(lbProvider provider.LBProvider)
 	Stop() error
-	GetLBConfigs() []*config.LoadBalancerConfig
+	GetLBConfigs() ([]*config.LoadBalancerConfig, error)
 	IsHealthy() bool
 }
 
@@ -20,6 +21,7 @@ var (
 
 func GetController(name string) LBController {
 	if controller, ok := controllers[name]; ok {
+		controller.Init()
 		return controller
 	}
 	return controllers["kubernetes"]
