@@ -115,19 +115,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		},
 	}
 
-	eventHandler := framework.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			lbc.syncQueue.Enqueue(obj)
-		},
-		DeleteFunc: func(obj interface{}) {
-			lbc.syncQueue.Enqueue(obj)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			if !reflect.DeepEqual(old, cur) {
-				lbc.syncQueue.Enqueue(cur)
-			}
-		},
-	}
+	eventHandler := framework.ResourceEventHandlerFuncs{}
 
 	lbc.ingLister.Store, lbc.ingController = framework.NewInformer(
 		&cache.ListWatch{

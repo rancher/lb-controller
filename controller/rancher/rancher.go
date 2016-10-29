@@ -431,15 +431,15 @@ func (mf rMetaFetcher) GetService(svcName string, stackName string) (*metadata.S
 func (lbc *loadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
 	var eps config.Endpoints
 	var err error
-	if strings.EqualFold(svc.Kind, "service") {
-		eps = lbc.getRegularServiceEndpoints(svc, targetPort, activeOnly)
-	} else if strings.EqualFold(svc.Kind, "externalService") {
+	if strings.EqualFold(svc.Kind, "externalService") {
 		eps = lbc.getExternalServiceEndpoints(svc, targetPort)
 	} else if strings.EqualFold(svc.Kind, "dnsService") {
 		eps, err = lbc.getAliasServiceEndpoints(svc, targetPort, activeOnly)
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		eps = lbc.getRegularServiceEndpoints(svc, targetPort, activeOnly)
 	}
 
 	// sort endpoints

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/event-subscriber/locks"
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
@@ -75,7 +75,7 @@ func init() {
 }
 
 func (lbp *LBProvider) IsHealthy() bool {
-	_, err := lbp.client.Environment.List(client.NewListOpts())
+	_, err := lbp.client.Stack.List(client.NewListOpts())
 	if err != nil {
 		logrus.Errorf("Health check failed: unable to reach Rancher. Error: %#v", err)
 		return false
@@ -108,20 +108,16 @@ func (lbp *LBProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 	defer unlocker.Unlock()
 
 	// 1.create serivce
-	lb, err := lbp.createLBService(lbConfig)
+	lb, err := lbp.createRancherLBService(lbConfig)
 	if err != nil {
 		return err
 	}
 
 	// 2.update lb (if needed)
-	if err = lbp.update(lbConfig, lb); err != nil {
+	if err = lbp.updateRancherLBService(lbConfig, lb); err != nil {
 		return err
 	}
 
-	// 3.set service links (if needed)
-	if err = lbp.setServiceLinks(lb, lbConfig); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -274,13 +270,13 @@ func convertObject(obj1 interface{}, obj2 interface{}) error {
 
 type waitCallback func(result chan<- interface{}) (bool, error)
 
-func (lbp *LBProvider) getOrCreateSystemStack() (*client.Environment, error) {
+func (lbp *LBProvider) getOrCreateSystemStack() (*client.Stack, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = controllerStackName
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["externalId"] = controllerExternalIDPrefix
 
-	envs, err := lbp.client.Environment.List(opts)
+	envs, err := lbp.client.Stack.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", controllerStackName, err)
 	}
@@ -289,25 +285,25 @@ func (lbp *LBProvider) getOrCreateSystemStack() (*client.Environment, error) {
 		return &envs.Data[0], nil
 	}
 
-	env := &client.Environment{
+	env := &client.Stack{
 		Name:       controllerStackName,
 		ExternalId: controllerExternalIDPrefix,
 	}
 
-	env, err = lbp.client.Environment.Create(env)
+	env, err = lbp.client.Stack.Create(env)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't create ingress controller stack [%s]. Error: %#v", controllerStackName, err)
 	}
 	return env, nil
 }
 
-func (lbp *LBProvider) getStack(name string) (*client.Environment, error) {
+func (lbp *LBProvider) getStack(name string) (*client.Stack, error) {
 	opts := client.NewListOpts()
 
 	opts.Filters["externalId"] = fmt.Sprintf("kubernetes://%s", name)
 	opts.Filters["removed_null"] = "1"
 
-	envs, err := lbp.client.Environment.List(opts)
+	envs, err := lbp.client.Stack.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", name, err)
 	}
@@ -332,92 +328,94 @@ func (lbp *LBProvider) createCertificate(cert *config.Certificate) (*client.Cert
 	return rancherCert, nil
 }
 
-func (lbp *LBProvider) update(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) error {
-	toUpdate := make(map[string]interface{})
-	certUpdate, err := lbp.needCertUpdate(lbConfig, lb)
-	if err != nil {
-		return err
-	}
+func (lbp *LBProvider) getRancherLbConfig(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) (*client.LbConfig, error) {
+	updatedConfig := &client.LbConfig{}
 
-	if certUpdate {
-		rancherCertID, err := lbp.getRancherCertID(lbConfig)
-		logrus.Infof("Updating Rancher LB with the new cert [%s] ", rancherCertID)
-		if err != nil {
-			return err
-		}
-
-		toUpdate["defaultCertificateId"] = rancherCertID
-	}
-
-	newGlobal, newDefaults, err := lbp.getCustomHaproxyConfig(lbConfig)
-	if err != nil {
-		return err
-	}
-
-	configUpdate := lbp.needConfigUpdate(lb, newGlobal, newDefaults)
-
-	if configUpdate {
-		logrus.Infof("Updating Rancher LB with the new config global:[%s], defaults:[%s]", newGlobal, newDefaults)
-		haproxyConfig := &client.HaproxyConfig{
-			Defaults: newDefaults,
-			Global:   newGlobal,
-		}
-		config := &client.LoadBalancerConfig{
-			HaproxyConfig: haproxyConfig,
-		}
-		toUpdate["loadBalancerConfig"] = config
-	}
-
-	if len(toUpdate) > 0 {
-		if _, err = lbp.client.LoadBalancerService.Update(lb, toUpdate); err != nil {
-			return fmt.Errorf("Failed to update lb [%s]. Error: %#v", lb.Name, err)
-
-		}
-	}
-	return nil
-}
-
-func (lbp *LBProvider) getCustomHaproxyConfig(lbConfig *config.LoadBalancerConfig) (string, string, error) {
-	global := ""
-	defaults := ""
-	flag := ""
-	for _, c := range strings.Split(lbConfig.Config, "\n") {
-		conf := strings.TrimSpace(c)
-		if strings.HasPrefix(conf, "defaults") {
-			flag = "defaults"
-			continue
-		} else if strings.HasPrefix(conf, "global") {
-			flag = "global"
-			continue
-		}
-
-		if flag == "global" {
-			global = fmt.Sprintf("%s%s\n", global, conf)
-		} else if flag == "defaults" {
-			defaults = fmt.Sprintf("%s%s\n", defaults, conf)
-		}
-	}
-	return global, defaults, nil
-}
-
-func (lbp *LBProvider) needConfigUpdate(lb *client.LoadBalancerService, newGlobal string, newDefaults string) bool {
-	oldGlobal := ""
-	oldDefaults := ""
-	config := lb.LoadBalancerConfig
-	if config != nil && config.HaproxyConfig != nil {
-		oldDefaults = config.HaproxyConfig.Defaults
-		oldGlobal = config.HaproxyConfig.Global
-	}
-
-	return oldGlobal != newGlobal || oldDefaults != newDefaults
-}
-
-func (lbp *LBProvider) needCertUpdate(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) (bool, error) {
+	// 1. cert
 	rancherCertID, err := lbp.getRancherCertID(lbConfig)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return lb.DefaultCertificateId != rancherCertID, nil
+	updatedConfig.DefaultCertificateId = rancherCertID
+
+	// 2. custom config
+	updatedConfig.Config = lbConfig.Config
+
+	// 3. portRules
+	portRules := []client.PortRule{}
+	proto := lbConfig.FrontendServices[0].Protocol
+	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
+		svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
+		if err != nil {
+			return nil, err
+		}
+		if svc == nil {
+			return nil, fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
+		}
+
+		portRule := client.PortRule{
+			ServiceId:  svc.Id,
+			Hostname:   bcknd.Host,
+			Path:       bcknd.Path,
+			TargetPort: int64(bcknd.Port),
+			SourcePort: int64(lbConfig.FrontendServices[0].Port),
+			Protocol:   proto,
+		}
+		portRules = append(portRules, portRule)
+	}
+	updatedConfig.PortRules = portRules
+
+	return updatedConfig, nil
+}
+
+func (lbp *LBProvider) updateRancherLBService(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) error {
+	updatedConfig, err := lbp.getRancherLbConfig(lbConfig, lb)
+	if err != nil {
+		return err
+	}
+	update := false
+	if !strings.EqualFold(updatedConfig.Config, lb.LbConfig.Config) {
+		update = true
+	} else if updatedConfig.DefaultCertificateId != lb.LbConfig.DefaultCertificateId {
+		update = true
+	} else {
+		if len(updatedConfig.PortRules) != len(lb.LbConfig.PortRules) {
+			update = true
+		} else {
+			//compare rules
+			for _, updated := range updatedConfig.PortRules {
+				found := false
+				for _, existing := range lb.LbConfig.PortRules {
+					if updated.SourcePort == existing.SourcePort {
+						if updated.TargetPort == existing.TargetPort {
+							if strings.EqualFold(updated.Protocol, existing.Protocol) {
+								if strings.EqualFold(updated.Hostname, existing.Hostname) {
+									if strings.EqualFold(updated.Path, existing.Path) {
+										found = true
+									}
+								}
+							}
+						}
+					}
+				}
+				if !found {
+					update = true
+					break
+				}
+			}
+		}
+	}
+
+	if update {
+		toUpdate := make(map[string]interface{})
+		toUpdate["lbConfig"] = updatedConfig
+		logrus.Infof("Updating Rancher LB with the new lbConfig [%s] ", updatedConfig)
+		if _, err = lbp.client.LoadBalancerService.Update(lb, toUpdate); err != nil {
+			return fmt.Errorf("Failed to update lb [%s]. Error: %#v", lb.Name, err)
+		}
+	}
+
+	return nil
 }
 
 func (lbp *LBProvider) cleanupLBService(lb *client.LoadBalancerService, lbConfig *config.LoadBalancerConfig) *client.LoadBalancerService {
@@ -482,7 +480,7 @@ func portsChanged(newPorts []string, oldPorts []string) bool {
 	return false
 }
 
-func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*client.LoadBalancerService, error) {
+func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfig) (*client.LoadBalancerService, error) {
 	stack, err := lbp.getOrCreateSystemStack()
 	if err != nil {
 		return nil, err
@@ -495,7 +493,7 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 	lb = lbp.cleanupLBService(lb, lbConfig)
 
 	if lb != nil {
-		if lb.State != "active" {
+		if lb.State == "requested" || lb.State == "inactive" || lb.State == "registering" || lb.State == "deactivating" {
 			return lbp.activateLBService(lb)
 		}
 		return lb, nil
@@ -503,39 +501,24 @@ func (lbp *LBProvider) createLBService(lbConfig *config.LoadBalancerConfig) (*cl
 
 	logrus.Info("Creating lb service")
 
-	// private port will be overritten by ports
-	// in hostname routing rules
 	lbPorts := []string{}
-	labels := make(map[string]interface{})
 	for _, lbFrontend := range lbConfig.FrontendServices {
-		defaultBackend := lbp.getDefaultBackend(lbFrontend)
 		publicPort := strconv.Itoa(lbFrontend.Port)
 		privatePort := strconv.Itoa(lbFrontend.Port)
-		if defaultBackend != nil {
-			privatePort = strconv.Itoa(defaultBackend.Port)
-		}
 		lbPorts = append(lbPorts, fmt.Sprintf("%v:%v", publicPort, privatePort))
-		if lbFrontend.Protocol == config.HTTPSProto {
-			labels["io.rancher.loadbalancer.ssl.ports"] = publicPort
-		}
 	}
 
-	// get certificate from rancher
-	rancherCertID, err := lbp.getRancherCertID(lbConfig)
-	if err != nil {
-		return nil, err
-	}
 	name := lbp.formatLBName(lbConfig.Name, false)
 	lb = &client.LoadBalancerService{
-		Name:          name,
-		EnvironmentId: stack.Id,
+		Name:    name,
+		StackId: stack.Id,
 		LaunchConfig: &client.LaunchConfig{
-			Ports:  lbPorts,
-			Labels: labels,
+			Ports:     lbPorts,
+			ImageUuid: "docker:rancher/lb-service-haproxy:latest",
 		},
-		ExternalId:           fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
-		DefaultCertificateId: rancherCertID,
-		Scale:                int64(lbConfig.Scale),
+		ExternalId: fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
+		LbConfig:   &client.LbConfig{},
+		Scale:      int64(lbConfig.Scale),
 	}
 
 	lb, err = lbp.client.LoadBalancerService.Create(lb)
@@ -571,15 +554,6 @@ func (lbp *LBProvider) getRancherCertID(lbConfig *config.LoadBalancerConfig) (st
 	return rancherCertID, nil
 }
 
-func (lbp *LBProvider) getDefaultBackend(frontend *config.FrontendService) *config.BackendService {
-	for _, backend := range frontend.BackendServices {
-		if backend.Path == "" && backend.Host == "" {
-			return backend
-		}
-	}
-	return nil
-}
-
 func (lbp *LBProvider) getCertificate(certName string) (*client.Certificate, error) {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = certName
@@ -594,117 +568,6 @@ func (lbp *LBProvider) getCertificate(certName string) (*client.Certificate, err
 		return &certs.Data[0], nil
 	}
 	return nil, nil
-}
-
-func (lbp *LBProvider) setServiceLinks(lb *client.LoadBalancerService, lbConfig *config.LoadBalancerConfig) error {
-	if len(lbConfig.FrontendServices) == 0 {
-		logrus.Infof("Config [%s] doesn't have any rules defined", lbConfig.Name)
-		return nil
-	}
-	actionChannel := lbp.waitForLBAction("setservicelinks", lb)
-	_, ok := <-actionChannel
-	if !ok {
-		return fmt.Errorf("Couldn't call setservicelinks on LB [%s]", lb.Name)
-	}
-
-	lb, err := lbp.reloadLBService(lb)
-	if err != nil {
-		return err
-	}
-	serviceLinks := &client.SetLoadBalancerServiceLinksInput{}
-	var newLinks []*client.LoadBalancerServiceLink
-
-	svcToPorts := make(map[string][]string)
-	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
-		svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
-		if err != nil {
-			return err
-		}
-		if svc == nil {
-			return fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
-		}
-		ports := []string{}
-		if _, ok := svcToPorts[svc.Id]; ok {
-			ports = svcToPorts[svc.Id]
-		}
-		var port string
-		bckndPort := strconv.Itoa(bcknd.Port)
-		if bcknd.Host != "" && bcknd.Path != "" {
-			port = fmt.Sprintf("%s%s=%s", bcknd.Host, bcknd.Path, bckndPort)
-		} else if bcknd.Host != "" {
-			port = fmt.Sprintf("%s=%s", bcknd.Host, bckndPort)
-		} else if bcknd.Path != "" {
-			port = fmt.Sprintf("%s=%s", bcknd.Path, bckndPort)
-		} else if bckndPort != "" {
-			port = bckndPort
-		}
-		ports = append(ports, port)
-		svcToPorts[svc.Id] = ports
-	}
-
-	for svcID, ports := range svcToPorts {
-		link := &client.LoadBalancerServiceLink{
-			ServiceId: svcID,
-			Ports:     ports,
-		}
-		serviceLinks.ServiceLinks = append(serviceLinks.ServiceLinks, link)
-		newLinks = append(newLinks, link)
-	}
-
-	setServiceLinks := false
-	// get existing links
-	existingLinks, err := lbp.GetServiceLinks(lb)
-	if err != nil {
-		return err
-	}
-	if len(existingLinks) != len(newLinks) {
-		setServiceLinks = true
-		logrus.Info("Number of new service links is different from existing")
-	}
-
-	for _, newLink := range newLinks {
-		linkExists := false
-		for _, existingLink := range existingLinks {
-			if newLink.ServiceId != existingLink.ConsumedServiceId {
-				continue
-			}
-			linkExists = true
-			if len(existingLink.Ports) != len(newLink.Ports) {
-				logrus.Info("Number of new service ports is different from existing")
-				setServiceLinks = true
-				break
-			}
-			for _, newPort := range newLink.Ports {
-				exists := false
-				for _, existingPort := range existingLink.Ports {
-					if newPort == existingPort {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					logrus.Infof("port [%v] either doesn't exist, or has different hostname routing rules", newPort)
-					setServiceLinks = true
-					break
-				}
-			}
-		}
-		if !linkExists {
-			logrus.Infof("Link to service id [%v] doesn't exist", newLink.ServiceId)
-			setServiceLinks = true
-			break
-		}
-	}
-
-	if setServiceLinks {
-		logrus.Info("Resetting service links")
-		_, err = lbp.client.LoadBalancerService.ActionSetservicelinks(lb, serviceLinks)
-		if err != nil {
-			return fmt.Errorf("Failed to set service links for lb [%s]. Error: %#v", lb.Name, err)
-		}
-	}
-
-	return nil
 }
 
 func (lbp *LBProvider) activateLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
@@ -771,7 +634,7 @@ func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) 
 	}
 	opts := client.NewListOpts()
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environmentId"] = stack.Id
+	opts.Filters["stackId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get all lb services. Error: %#v", err)
@@ -789,7 +652,7 @@ func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerServ
 	opts := client.NewListOpts()
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
-	opts.Filters["environmentId"] = stack.Id
+	opts.Filters["stackId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get LB service by name [%s]. Error: %#v", name, err)
