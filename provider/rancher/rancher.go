@@ -352,7 +352,6 @@ func (lbp *LBProvider) getRancherLbConfig(lbConfig *config.LoadBalancerConfig, l
 		if svc == nil {
 			return nil, fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
 		}
-
 		portRule := client.PortRule{
 			ServiceId:  svc.Id,
 			Hostname:   bcknd.Host,
@@ -456,7 +455,7 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	}
 	// legacy code where "-" was used as a separator
 	fmtName = lbp.formatLBName(lbConfigName, true)
-	logrus.Infof("Fetching service by name [%v]", fmtName)
+	logrus.Debugf("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
 }
 
