@@ -411,31 +411,31 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			}
 		}
 		if allowHTTP == true {
-			if cert != nil {
-				frontendHTTPSPort := 443
-				if portStr, ok := params["https.port"]; ok {
-					frontendHTTPSPort, _ = strconv.Atoi(portStr)
-				}
-				frontEndHTTPSService := &config.FrontendService{
-					Name:            fmt.Sprintf("%v_%v", ing.Name, "https"),
-					Port:            frontendHTTPSPort,
-					BackendServices: backends,
-					Protocol:        config.HTTPSProto,
-				}
-				frontEndServices = append(frontEndServices, frontEndHTTPSService)
-			} else {
-				frontendHTTPPort := 80
-				if portStr, ok := params["http.port"]; ok {
-					frontendHTTPPort, _ = strconv.Atoi(portStr)
-				}
-				frontEndHTTPService := &config.FrontendService{
-					Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
-					Port:            frontendHTTPPort,
-					BackendServices: backends,
-					Protocol:        config.HTTPProto,
-				}
-				frontEndServices = append(frontEndServices, frontEndHTTPService)
+			frontendHTTPPort := 80
+			if portStr, ok := params["http.port"]; ok {
+				frontendHTTPPort, _ = strconv.Atoi(portStr)
 			}
+			frontEndHTTPService := &config.FrontendService{
+				Name:            fmt.Sprintf("%v_%v", ing.Name, "http"),
+				Port:            frontendHTTPPort,
+				BackendServices: backends,
+				Protocol:        config.HTTPProto,
+			}
+			frontEndServices = append(frontEndServices, frontEndHTTPService)
+		}
+
+		if cert != nil {
+			frontendHTTPSPort := 443
+			if portStr, ok := params["https.port"]; ok {
+				frontendHTTPSPort, _ = strconv.Atoi(portStr)
+			}
+			frontEndHTTPSService := &config.FrontendService{
+				Name:            fmt.Sprintf("%v_%v", ing.Name, "https"),
+				Port:            frontendHTTPSPort,
+				BackendServices: backends,
+				Protocol:        config.HTTPSProto,
+			}
+			frontEndServices = append(frontEndServices, frontEndHTTPSService)
 		}
 
 		scale := 0
