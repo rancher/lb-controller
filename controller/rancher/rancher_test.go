@@ -206,6 +206,147 @@ func TestStoppedInstance(t *testing.T) {
 	}
 }
 
+func TestPriority(t *testing.T) {
+	portRules := []metadata.PortRule{}
+	port0 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "fooff",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   3,
+	}
+	port1 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "foo",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   100,
+	}
+	port2 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "*.bar",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   2,
+	}
+	port3 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "baz",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   4,
+	}
+	port4 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "bazfsd",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   1,
+	}
+
+	portRules = append(portRules, port0)
+	portRules = append(portRules, port1)
+	portRules = append(portRules, port2)
+	portRules = append(portRules, port3)
+	portRules = append(portRules, port4)
+
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+
+	bes := configs[0].FrontendServices[0].BackendServices
+	if len(bes) != 5 {
+		t.Fatalf("Invalid backend length [%v]", len(bes))
+	}
+
+	if bes[0].Host != port4.Hostname {
+		t.Fatalf("Invalid order for the 1st element: [%v]", bes[0].UUID)
+	}
+	if bes[1].Host != "bar" {
+		t.Fatalf("Invalid order for the 2nd element: [%v]", bes[1].UUID)
+	}
+	if bes[2].Host != port0.Hostname {
+		t.Fatalf("Invalid order for the 3rd element: [%v]", bes[2].Host)
+	}
+	if bes[3].Host != port3.Hostname {
+		t.Fatalf("Invalid order for the 4th element: [%v]", bes[3].Host)
+	}
+	if bes[4].Host != port1.Hostname {
+		t.Fatalf("Invalid order for the 5th element: [%v]", bes[4].Host)
+	}
+}
+
+func TestPriorityExtra(t *testing.T) {
+	portRules := []metadata.PortRule{}
+	port0 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "*.fooff",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   1,
+	}
+	port1 := metadata.PortRule{
+		Protocol:   "http",
+		Service:    "default/priority",
+		Hostname:   "foo",
+		TargetPort: 44,
+		SourcePort: 45,
+		Priority:   2,
+	}
+
+	portRules = append(portRules, port0)
+	portRules = append(portRules, port1)
+
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+
+	bes := configs[0].FrontendServices[0].BackendServices
+	if len(bes) != 2 {
+		t.Fatalf("Invalid backend length [%v]", len(bes))
+	}
+
+	if bes[0].Host != "fooff" {
+		t.Fatalf("Invalid order for the 1st element: [%v]", bes[0].UUID)
+	}
+
+	if bes[1].Host != port1.Hostname {
+		t.Fatalf("Invalid order for the 1st element: [%v]", bes[1].UUID)
+	}
+
+	//swap order
+	portRules = []metadata.PortRule{}
+	portRules = append(portRules, port1)
+	portRules = append(portRules, port0)
+	meta = &LBMetadata{
+		PortRules: portRules,
+	}
+
+	configs, _ = lbc.BuildConfigFromMetadata("test", meta)
+	bes = configs[0].FrontendServices[0].BackendServices
+	if len(bes) != 2 {
+		t.Fatalf("Invalid backend length [%v]", len(bes))
+	}
+
+	if bes[0].Host != "fooff" {
+		t.Fatalf("Invalid order for the 1st element: [%v]", bes[0].UUID)
+	}
+
+	if bes[1].Host != port1.Hostname {
+		t.Fatalf("Invalid order for the 1st element: [%v]", bes[1].UUID)
+	}
+}
+
 func TestRuleFields(t *testing.T) {
 	portRules := []metadata.PortRule{}
 	port := metadata.PortRule{
@@ -349,6 +490,11 @@ func (mf tMetaFetcher) GetService(svcName string, stackName string) (*metadata.S
 			Kind:       "service",
 			Containers: getContainers("selector"),
 		}
+	} else if strings.EqualFold(svcName, "priority") {
+		svc = &metadata.Service{
+			Kind:       "service",
+			Containers: getContainers("priority"),
+		}
 	}
 
 	return svc, nil
@@ -380,6 +526,12 @@ func getContainers(svcName string) []metadata.Container {
 		containers = append(containers, c1)
 		containers = append(containers, c2)
 	} else if strings.EqualFold(svcName, "selector") {
+		c1 := metadata.Container{
+			PrimaryIp: "10.1.1.10",
+			State:     "running",
+		}
+		containers = append(containers, c1)
+	} else if strings.EqualFold(svcName, "priority") {
 		c1 := metadata.Container{
 			PrimaryIp: "10.1.1.10",
 			State:     "running",

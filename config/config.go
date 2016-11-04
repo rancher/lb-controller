@@ -124,9 +124,7 @@ func (s BackendServices) Less(i, j int) bool {
 		if p2 == 0 {
 			return true
 		}
-		if p1 < p2 {
-			return true
-		}
+		return p1 < p2
 	} else if p2 > 0 {
 		return false
 	}
