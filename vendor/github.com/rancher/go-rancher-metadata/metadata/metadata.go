@@ -22,6 +22,7 @@ type Client interface {
 	GetServiceContainers(string, string) ([]Container, error)
 	GetHosts() ([]Host, error)
 	GetHost(string) (Host, error)
+	GetNetworks() ([]Network, error)
 }
 
 type client struct {
@@ -238,4 +239,18 @@ func (m *client) GetHost(UUID string) (Host, error) {
 	}
 
 	return host, fmt.Errorf("could not find host by UUID %v", UUID)
+}
+
+func (m *client) GetNetworks() ([]Network, error) {
+	resp, err := m.SendRequest("/networks")
+	var networks []Network
+	if err != nil {
+		return networks, err
+	}
+
+	if err = json.Unmarshal(resp, &networks); err != nil {
+		return networks, err
+	}
+
+	return networks, nil
 }
