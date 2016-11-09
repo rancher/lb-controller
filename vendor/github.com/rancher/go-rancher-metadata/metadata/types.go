@@ -20,6 +20,7 @@ type Service struct {
 	Scale              int                    `json:"scale"`
 	Name               string                 `json:"name"`
 	StackName          string                 `json:"stack_name"`
+	StackUUID          string                 `json:"stack_uuid"`
 	Kind               string                 `json:"kind"`
 	Hostname           string                 `json:"hostname"`
 	Vip                string                 `json:"vip"`
@@ -61,6 +62,14 @@ type Container struct {
 	DnsSearch                []string          `json:"dns_search"`
 	HealthCheckHosts         []string          `json:"health_check_hosts"`
 	NetworkFromContainerUUID string            `json:"network_from_container_uuid"`
+	NetworkUUID              string            `json:"network_uuid"`
+}
+
+type Network struct {
+	Name      string                 `json:"name"`
+	UUID      string                 `json:"uuid"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	HostPorts bool                   `json:"host_ports"`
 }
 
 type Host struct {
