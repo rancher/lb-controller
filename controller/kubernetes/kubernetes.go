@@ -115,7 +115,19 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		},
 	}
 
-	eventHandler := framework.ResourceEventHandlerFuncs{}
+	eventHandler := framework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			lbc.syncQueue.Enqueue(obj)
+		},
+		DeleteFunc: func(obj interface{}) {
+			lbc.syncQueue.Enqueue(obj)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			if !reflect.DeepEqual(old, cur) {
+				lbc.syncQueue.Enqueue(cur)
+			}
+		},
+	}
 
 	lbc.ingLister.Store, lbc.ingController = framework.NewInformer(
 		&cache.ListWatch{
@@ -412,7 +424,6 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			frontEndServices = append(frontEndServices, frontEndHTTPService)
 		}
 
-		// populate https service
 		if cert != nil {
 			frontendHTTPSPort := 443
 			if portStr, ok := params["https.port"]; ok {
@@ -426,6 +437,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			}
 			frontEndServices = append(frontEndServices, frontEndHTTPSService)
 		}
+
 		scale := 0
 		if scaleStr, ok := params["scale"]; ok {
 			scale, _ = strconv.Atoi(scaleStr)
@@ -448,7 +460,7 @@ func (lbc *loadBalancerController) getCertificate(secretName string, namespace s
 	var cert, key string
 	secret, err := lbc.client.Secrets(namespace).Get(secretName)
 	if err != nil {
-		logrus.Infof("Cert [%s] needs to be fetched: %v", secretName, err)
+		logrus.Debugf("Cert [%s] needs to be fetched: %v", secretName, err)
 		fetch = true
 	} else {
 		certData, ok := secret.Data[api.TLSCertKey]
@@ -502,7 +514,7 @@ func (lbc *loadBalancerController) getService(svcName string, namespace string) 
 	}
 
 	if !svcExists {
-		logrus.Warningf("service [%s] does no exists", svcKey)
+		logrus.Debugf("service [%s] does not exists", svcKey)
 		return nil, nil
 	}
 

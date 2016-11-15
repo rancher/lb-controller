@@ -343,26 +343,28 @@ func (lbp *LBProvider) getRancherLbConfig(lbConfig *config.LoadBalancerConfig, l
 
 	// 3. portRules
 	portRules := []client.PortRule{}
-	proto := lbConfig.FrontendServices[0].Protocol
-	for _, bcknd := range lbConfig.FrontendServices[0].BackendServices {
-		svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
-		if err != nil {
-			return nil, err
+	for _, fe := range lbConfig.FrontendServices {
+		proto := fe.Protocol
+		for _, bcknd := range fe.BackendServices {
+			svc, err := lbp.getKubernetesServiceByUUID(bcknd.UUID)
+			if err != nil {
+				return nil, err
+			}
+			if svc == nil {
+				return nil, fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
+			}
+			portRule := client.PortRule{
+				ServiceId:  svc.Id,
+				Hostname:   bcknd.Host,
+				Path:       bcknd.Path,
+				TargetPort: int64(bcknd.Port),
+				SourcePort: int64(fe.Port),
+				Protocol:   proto,
+			}
+			portRules = append(portRules, portRule)
 		}
-		if svc == nil {
-			return nil, fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
-		}
-
-		portRule := client.PortRule{
-			ServiceId:  svc.Id,
-			Hostname:   bcknd.Host,
-			Path:       bcknd.Path,
-			TargetPort: int64(bcknd.Port),
-			SourcePort: int64(lbConfig.FrontendServices[0].Port),
-			Protocol:   proto,
-		}
-		portRules = append(portRules, portRule)
 	}
+
 	updatedConfig.PortRules = portRules
 
 	return updatedConfig, nil
@@ -456,7 +458,7 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	}
 	// legacy code where "-" was used as a separator
 	fmtName = lbp.formatLBName(lbConfigName, true)
-	logrus.Infof("Fetching service by name [%v]", fmtName)
+	logrus.Debugf("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
 }
 
