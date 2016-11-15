@@ -38,7 +38,6 @@ apply_config()
         copy_data $1
         reload_haproxy $1 $2
     else
-        echo "no changes in haproxy config"
         return 0
     fi
 }

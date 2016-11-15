@@ -157,7 +157,9 @@ func (lbp *Provider) GetPublicEndpoints(configName string) []string {
 func (cfg *haproxyConfig) start() error {
 	output, err := exec.Command("sh", "-c", cfg.StartCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
-	logrus.Info(msg)
+	if string(output) != "" {
+		logrus.Info(msg)
+	}
 	if err != nil {
 		return fmt.Errorf("error starting %v: %v", msg, err)
 	}
@@ -167,7 +169,9 @@ func (cfg *haproxyConfig) start() error {
 func (cfg *haproxyConfig) reload() error {
 	output, err := exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
-	logrus.Info(msg)
+	if string(output) != "" {
+		logrus.Info(msg)
+	}
 	if err != nil {
 		return fmt.Errorf("error reloading %v: %v", msg, err)
 	}
