@@ -515,7 +515,7 @@ func (lbc *loadBalancerController) sync(key string) {
 		//skip syncing if controller is being shut down
 		return
 	}
-	logrus.Info("Syncing up LB")
+	logrus.Debugf("Syncing up LB")
 	requeue := false
 	cfgs, err := lbc.GetLBConfigs()
 	if err == nil {
