@@ -510,13 +510,20 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 		lbPorts = append(lbPorts, fmt.Sprintf("%v:%v", publicPort, privatePort))
 	}
 
+	var imageUUID string
+	imageUUID, fetched := lbp.GetSetting("lb.instance.image")
+	if !fetched || imageUUID == "" {
+		return nil, fmt.Errorf("Failed to fetch lb.instance.image setting")
+	}
+	imageUUID = fmt.Sprintf("docker:%s", imageUUID)
+
 	name := lbp.formatLBName(lbConfig.Name, false)
 	lb = &client.LoadBalancerService{
 		Name:    name,
 		StackId: stack.Id,
 		LaunchConfig: &client.LaunchConfig{
 			Ports:     lbPorts,
-			ImageUuid: "docker:rancher/lb-service-haproxy:latest",
+			ImageUuid: imageUUID,
 		},
 		ExternalId: fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
 		LbConfig:   &client.LbConfig{},
@@ -529,6 +536,24 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 	}
 
 	return lbp.activateLBService(lb)
+}
+
+func (lbp *LBProvider) GetSetting(key string) (string, bool) {
+	opts := client.NewListOpts()
+	opts.Filters["name"] = key
+	settings, err := lbp.client.Setting.List(opts)
+	if err != nil {
+		logrus.Errorf("GetSetting(%s): Error: %s", key, err)
+		return "", false
+	}
+
+	for _, data := range settings.Data {
+		if strings.EqualFold(data.Name, key) {
+			return data.Value, true
+		}
+	}
+
+	return "", false
 }
 
 func (lbp *LBProvider) getRancherCertID(lbConfig *config.LoadBalancerConfig) (string, error) {
