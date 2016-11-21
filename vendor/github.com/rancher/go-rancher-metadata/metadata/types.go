@@ -38,6 +38,7 @@ type Service struct {
 	HealthCheck        HealthCheck            `json:"health_check"`
 	PrimaryServiceName string                 `json:"primary_service_name"`
 	LBConfig           LBConfig               `json:"lb_config"`
+	EnvironmentUUID    string                 `json:"environment_uuid"`
 }
 
 type Container struct {
@@ -47,6 +48,7 @@ type Container struct {
 	Ips                      []string          `json:"ips"`
 	Ports                    []string          `json:"ports"`
 	ServiceName              string            `json:"service_name"`
+	ServiceIndex             string            `json:"service_index"`
 	StackName                string            `json:"stack_name"`
 	Labels                   map[string]string `json:"labels"`
 	CreateIndex              int               `json:"create_index"`
@@ -63,6 +65,9 @@ type Container struct {
 	HealthCheckHosts         []string          `json:"health_check_hosts"`
 	NetworkFromContainerUUID string            `json:"network_from_container_uuid"`
 	NetworkUUID              string            `json:"network_uuid"`
+	Links                    map[string]string `json:"links"`
+	System                   bool              `json:"system"`
+	EnvironmentUUID          string            `json:"environment_uuid"`
 }
 
 type Network struct {
@@ -70,18 +75,20 @@ type Network struct {
 	UUID      string                 `json:"uuid"`
 	Metadata  map[string]interface{} `json:"metadata"`
 	HostPorts bool                   `json:"host_ports"`
+	Default   bool                   `json:"is_default"`
 }
 
 type Host struct {
-	Name           string            `json:"name"`
-	AgentIP        string            `json:"agent_ip"`
-	HostId         int               `json:"host_id"`
-	Labels         map[string]string `json:"labels"`
-	UUID           string            `json:"uuid"`
-	Hostname       string            `json:"hostname"`
-	Memory         int64             `json:"memory"`
-	MilliCPU       int64             `json:"milli_cpu"`
-	LocalStorageMb int64             `json:"local_storage_mb"`
+	Name            string            `json:"name"`
+	AgentIP         string            `json:"agent_ip"`
+	HostId          int               `json:"host_id"`
+	Labels          map[string]string `json:"labels"`
+	UUID            string            `json:"uuid"`
+	Hostname        string            `json:"hostname"`
+	Memory          int64             `json:"memory"`
+	MilliCPU        int64             `json:"milli_cpu"`
+	LocalStorageMb  int64             `json:"local_storage_mb"`
+	EnvironmentUUID string            `json:"environment_uuid"`
 }
 
 type PortRule struct {

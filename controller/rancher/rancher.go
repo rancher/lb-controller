@@ -22,7 +22,7 @@ const (
 )
 
 func init() {
-	lbc, err := newLoadBalancerController()
+	lbc, err := NewLoadBalancerController()
 	if err != nil {
 		logrus.Fatalf("%v", err)
 	}
@@ -30,7 +30,7 @@ func init() {
 	controller.RegisterController(lbc.GetName(), lbc)
 }
 
-func (lbc *loadBalancerController) Init() {
+func (lbc *LoadBalancerController) Init() {
 	cattleURL := os.Getenv("CATTLE_URL")
 	if len(cattleURL) == 0 {
 		logrus.Fatalf("CATTLE_URL is not set, fail to init Rancher LB provider")
@@ -57,54 +57,55 @@ func (lbc *loadBalancerController) Init() {
 		logrus.Fatalf("Failed to create Rancher client %v", err)
 	}
 
-	certFetcher := &rCertificateFetcher{
-		client: client,
+	certFetcher := &RCertificateFetcher{
+		Client: client,
 	}
 
-	lbc.certFetcher = certFetcher
+	lbc.CertFetcher = certFetcher
 }
 
-type loadBalancerController struct {
+type LoadBalancerController struct {
 	shutdown                   bool
 	stopCh                     chan struct{}
-	lbProvider                 provider.LBProvider
+	LBProvider                 provider.LBProvider
 	syncQueue                  *utils.TaskQueue
 	opts                       *client.ClientOpts
 	incrementalBackoff         int64
 	incrementalBackoffInterval int64
-	certFetcher                CertificateFetcher
-	metaFetcher                MetadataFetcher
+	CertFetcher                CertificateFetcher
+	MetaFetcher                MetadataFetcher
 }
 
 type MetadataFetcher interface {
 	GetSelfService() (metadata.Service, error)
-	GetService(svcName string, stackName string) (*metadata.Service, error)
+	GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error)
 	OnChange(intervalSeconds int, do func(string))
 	GetServices() ([]metadata.Service, error)
 }
 
-type rMetaFetcher struct {
-	metadataClient metadata.Client
+type RMetaFetcher struct {
+	MetadataClient metadata.Client
 }
 
 type CertificateFetcher interface {
-	fetchCertificate(certName string) (*config.Certificate, error)
+	FetchCertificate(certName string) (*config.Certificate, error)
+	UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error
 }
 
-type rCertificateFetcher struct {
-	client *client.RancherClient
+type RCertificateFetcher struct {
+	Client *client.RancherClient
 }
 
-func (lbc *loadBalancerController) GetName() string {
+func (lbc *LoadBalancerController) GetName() string {
 	return "rancher"
 }
 
-func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
+func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
 	logrus.Infof("starting %s controller", lbc.GetName())
-	lbc.lbProvider = provider
+	lbc.LBProvider = provider
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 
-	go lbc.lbProvider.Run(nil)
+	go lbc.LBProvider.Run(nil)
 
 	metadataClient, err := metadata.NewClientAndWait(metadataURL)
 	if err != nil {
@@ -112,29 +113,29 @@ func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
 		lbc.Stop()
 	}
 
-	lbc.metaFetcher = rMetaFetcher{
-		metadataClient: metadataClient,
+	lbc.MetaFetcher = RMetaFetcher{
+		MetadataClient: metadataClient,
 	}
 
-	lbc.metaFetcher.OnChange(5, lbc.ScheduleApplyConfig)
+	lbc.MetaFetcher.OnChange(5, lbc.ScheduleApplyConfig)
 
 	<-lbc.stopCh
 }
 
-func (mf rMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
-	mf.metadataClient.OnChange(intervalSeconds, do)
+func (mf RMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
+	mf.MetadataClient.OnChange(intervalSeconds, do)
 }
 
-func (lbc *loadBalancerController) ScheduleApplyConfig(string) {
+func (lbc *LoadBalancerController) ScheduleApplyConfig(string) {
 	logrus.Debug("Scheduling apply config")
 	lbc.syncQueue.Enqueue(lbc.GetName())
 }
 
-func (lbc *loadBalancerController) Stop() error {
+func (lbc *LoadBalancerController) Stop() error {
 	if !lbc.shutdown {
 		logrus.Infof("Shutting down %s controller", lbc.GetName())
 		//stop the provider
-		if err := lbc.lbProvider.Stop(); err != nil {
+		if err := lbc.LBProvider.Stop(); err != nil {
 			return err
 		}
 		close(lbc.stopCh)
@@ -144,7 +145,7 @@ func (lbc *loadBalancerController) Stop() error {
 	return fmt.Errorf("shutdown already in progress")
 }
 
-func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta *LBMetadata) ([]*config.LoadBalancerConfig, error) {
+func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName string, envUUID string, lbMeta *LBMetadata) ([]*config.LoadBalancerConfig, error) {
 	lbConfigs := []*config.LoadBalancerConfig{}
 	if lbMeta == nil {
 		lbMeta = &LBMetadata{
@@ -158,13 +159,13 @@ func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta
 	// fetch certificates
 	certs := []*config.Certificate{}
 	for _, certName := range lbMeta.Certs {
-		cert, err := lbc.certFetcher.fetchCertificate(certName)
+		cert, err := lbc.CertFetcher.FetchCertificate(certName)
 		if err != nil {
 			return nil, err
 		}
 		certs = append(certs, cert)
 	}
-	defaultCert, err := lbc.certFetcher.fetchCertificate(lbMeta.DefaultCert)
+	defaultCert, err := lbc.CertFetcher.FetchCertificate(lbMeta.DefaultCert)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +199,7 @@ func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta
 		// service comes in a format of stackName/serviceName,
 		// replace "/"" with "_"
 		svcName := strings.SplitN(rule.Service, "/", 2)
-		service, err := lbc.metaFetcher.GetService(svcName[1], svcName[0])
+		service, err := lbc.MetaFetcher.GetService(envUUID, svcName[1], svcName[0])
 		if err != nil {
 			return nil, err
 		}
@@ -287,7 +288,7 @@ func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta
 		StickinessPolicy: &lbMeta.StickinessPolicy,
 	}
 
-	if err = lbc.lbProvider.ProcessCustomConfig(lbConfig, lbMeta.Config); err != nil {
+	if err = lbc.LBProvider.ProcessCustomConfig(lbConfig, lbMeta.Config); err != nil {
 		return nil, err
 	}
 
@@ -296,32 +297,28 @@ func (lbc *loadBalancerController) BuildConfigFromMetadata(lbName string, lbMeta
 	return lbConfigs, nil
 }
 
-func (mf rMetaFetcher) GetSelfService() (metadata.Service, error) {
-	return mf.metadataClient.GetSelfService()
+func (mf RMetaFetcher) GetSelfService() (metadata.Service, error) {
+	return mf.MetadataClient.GetSelfService()
 }
 
-func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig, error) {
-	lbSvc, err := lbc.metaFetcher.GetSelfService()
+func (lbc *LoadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig, error) {
+	lbSvc, err := lbc.MetaFetcher.GetSelfService()
 	if err != nil {
 		return nil, err
 	}
 
-	lbMeta, err := lbc.collectLBMetadata(lbSvc)
+	lbMeta, err := lbc.CollectLBMetadata(lbSvc)
 	if err != nil {
 		return nil, err
 	}
 
-	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbMeta)
+	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, lbMeta)
 }
 
-func (lbc *loadBalancerController) collectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
+func (lbc *LoadBalancerController) CollectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
 	lbConfig := lbSvc.LBConfig
-	if len(lbConfig.PortRules) == 0 {
-		logrus.Debugf("Metadata is empty for the service %v", lbSvc.Name)
-		return nil, nil
-	}
 
-	lbMeta, err := getLBMetadata(lbConfig)
+	lbMeta, err := GetLBMetadata(lbConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -333,10 +330,10 @@ func (lbc *loadBalancerController) collectLBMetadata(lbSvc metadata.Service) (*L
 	return lbMeta, nil
 }
 
-func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
+func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	//collect selector based services
 	var rules []metadata.PortRule
-	svcs, err := lbc.metaFetcher.GetServices()
+	svcs, err := lbc.MetaFetcher.GetServices()
 	if err != nil {
 		return err
 	}
@@ -354,7 +351,7 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 				continue
 			}
 
-			meta, err := getLBMetadata(lbConfig)
+			meta, err := GetLBMetadata(lbConfig)
 			if err != nil {
 				return err
 			}
@@ -377,7 +374,7 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	return nil
 }
 
-func (fetcher *rCertificateFetcher) fetchCertificate(certName string) (*config.Certificate, error) {
+func (fetcher *RCertificateFetcher) FetchCertificate(certName string) (*config.Certificate, error) {
 	if certName == "" {
 		return nil, nil
 	}
@@ -385,7 +382,7 @@ func (fetcher *rCertificateFetcher) fetchCertificate(certName string) (*config.C
 	opts.Filters["name"] = certName
 	opts.Filters["removed_null"] = "1"
 
-	certs, err := fetcher.client.Certificate.List(opts)
+	certs, err := fetcher.Client.Certificate.List(opts)
 	if err != nil {
 		return nil, fmt.Errorf("Coudln't get certificate by name [%s]. Error: %#v", certName, err)
 	}
@@ -402,6 +399,29 @@ func (fetcher *rCertificateFetcher) fetchCertificate(certName string) (*config.C
 	}, nil
 }
 
+func (fetcher *RCertificateFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error {
+	opts := client.NewListOpts()
+	opts.Filters["uuid"] = lbSvc.UUID
+	opts.Filters["removed_null"] = "1"
+	lbs, err := fetcher.Client.LoadBalancerService.List(opts)
+	if err != nil {
+		return fmt.Errorf("Coudln't get LB service by uuid [%s]. Error: %#v", lbSvc.UUID, err)
+	}
+	if len(lbs.Data) == 0 {
+		logrus.Infof("Failed to find lb by uuid %s", lbSvc.UUID)
+		return nil
+	}
+	lb := lbs.Data[0]
+
+	toUpdate := make(map[string]interface{})
+	toUpdate["publicEndpoints"] = eps
+	logrus.Infof("Updating Rancher LB [%s] in stack [%s] with the new public endpoints [%v] ", lbSvc.Name, lbSvc.StackName, eps)
+	if _, err := fetcher.Client.LoadBalancerService.Update(&lb, toUpdate); err != nil {
+		return fmt.Errorf("Failed to update Rancher LB [%s] in stack [%s]. Error: %#v", lbSvc.Name, lbSvc.StackName, err)
+	}
+	return nil
+}
+
 func getServiceHealthCheck(svc *metadata.Service) (*config.HealthCheck, error) {
 	if &svc.HealthCheck == nil {
 		return nil, nil
@@ -409,17 +429,21 @@ func getServiceHealthCheck(svc *metadata.Service) (*config.HealthCheck, error) {
 	return getConfigServiceHealthCheck(svc.HealthCheck)
 }
 
-func (mf rMetaFetcher) GetServices() ([]metadata.Service, error) {
-	return mf.metadataClient.GetServices()
+func (mf RMetaFetcher) GetServices() ([]metadata.Service, error) {
+	return mf.MetadataClient.GetServices()
 }
 
-func (mf rMetaFetcher) GetService(svcName string, stackName string) (*metadata.Service, error) {
-	svcs, err := mf.metadataClient.GetServices()
+func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {
+	svcs, err := mf.MetadataClient.GetServices()
 	if err != nil {
 		return nil, err
 	}
 	var service metadata.Service
 	for _, svc := range svcs {
+		//only consider services from the same environment
+		if !strings.EqualFold(svc.EnvironmentUUID, envUUID) {
+			continue
+		}
 		if strings.EqualFold(svc.Name, svcName) && strings.EqualFold(svc.StackName, stackName) {
 			service = svc
 			break
@@ -428,7 +452,7 @@ func (mf rMetaFetcher) GetService(svcName string, stackName string) (*metadata.S
 	return &service, nil
 }
 
-func (lbc *loadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
+func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
 	var eps config.Endpoints
 	var err error
 	if strings.EqualFold(svc.Kind, "externalService") {
@@ -447,11 +471,11 @@ func (lbc *loadBalancerController) getServiceEndpoints(svc *metadata.Service, ta
 	return eps, nil
 }
 
-func (lbc *loadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
+func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
 	var eps config.Endpoints
 	for link := range svc.Links {
 		svcName := strings.SplitN(link, "/", 2)
-		service, err := lbc.metaFetcher.GetService(svcName[1], svcName[0])
+		service, err := lbc.MetaFetcher.GetService(svc.EnvironmentUUID, svcName[1], svcName[0])
 		if err != nil {
 			return nil, err
 		}
@@ -467,7 +491,7 @@ func (lbc *loadBalancerController) getAliasServiceEndpoints(svc *metadata.Servic
 	return eps, nil
 }
 
-func (lbc *loadBalancerController) getExternalServiceEndpoints(svc *metadata.Service, targetPort int) config.Endpoints {
+func (lbc *LoadBalancerController) getExternalServiceEndpoints(svc *metadata.Service, targetPort int) config.Endpoints {
 	var eps config.Endpoints
 	for _, e := range svc.ExternalIps {
 		ep := &config.Endpoint{
@@ -480,7 +504,7 @@ func (lbc *loadBalancerController) getExternalServiceEndpoints(svc *metadata.Ser
 	return eps
 }
 
-func (lbc *loadBalancerController) getRegularServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) config.Endpoints {
+func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) config.Endpoints {
 	var eps config.Endpoints
 	for _, c := range svc.Containers {
 		if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
@@ -495,12 +519,12 @@ func (lbc *loadBalancerController) getRegularServiceEndpoints(svc *metadata.Serv
 	return eps
 }
 
-func (lbc *loadBalancerController) IsHealthy() bool {
+func (lbc *LoadBalancerController) IsHealthy() bool {
 	return true
 }
 
-func newLoadBalancerController() (*loadBalancerController, error) {
-	lbc := &loadBalancerController{
+func NewLoadBalancerController() (*LoadBalancerController, error) {
+	lbc := &LoadBalancerController{
 		stopCh:                     make(chan struct{}),
 		incrementalBackoff:         0,
 		incrementalBackoffInterval: 5,
@@ -510,7 +534,7 @@ func newLoadBalancerController() (*loadBalancerController, error) {
 	return lbc, nil
 }
 
-func (lbc *loadBalancerController) sync(key string) {
+func (lbc *LoadBalancerController) sync(key string) {
 	if lbc.shutdown {
 		//skip syncing if controller is being shut down
 		return
@@ -520,7 +544,7 @@ func (lbc *loadBalancerController) sync(key string) {
 	cfgs, err := lbc.GetLBConfigs()
 	if err == nil {
 		for _, cfg := range cfgs {
-			if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
+			if err := lbc.LBProvider.ApplyConfig(cfg); err != nil {
 				logrus.Errorf("Failed to apply lb config on provider: %v", err)
 				requeue = true
 			}
@@ -538,7 +562,7 @@ func (lbc *loadBalancerController) sync(key string) {
 	}
 }
 
-func (lbc *loadBalancerController) requeue(key string) {
+func (lbc *LoadBalancerController) requeue(key string) {
 	// requeue only when after incremental backoff time
 	lbc.incrementalBackoff = lbc.incrementalBackoff + lbc.incrementalBackoffInterval
 	time.Sleep(time.Duration(lbc.incrementalBackoff) * time.Second)
