@@ -347,18 +347,13 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 			continue
 		}
 
-		path := lbRule.Path
-		hostname := lbRule.Hostname
-		targetPort := lbRule.TargetPort
-		backendName := lbRule.BackendName
-
 		for _, svc := range svcs {
 			if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
 				continue
 			}
 			lbConfig := svc.LBConfig
 			if len(lbConfig.PortRules) == 0 {
-				if targetPort == 0 {
+				if lbRule.TargetPort == 0 {
 					continue
 				}
 			}
@@ -370,31 +365,14 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 
 			if len(meta.PortRules) > 0 {
 				for _, rule := range meta.PortRules {
-					ruleHostname := rule.Hostname
-					rulePath := rule.Path
-					ruleTargetPort := rule.TargetPort
-					ruleBackendName := rule.BackendName
-					if ruleHostname == "" && hostname != "" {
-						ruleHostname = hostname
-					}
-					if rulePath == "" && path != "" {
-						rulePath = path
-					}
-					if ruleTargetPort == 0 && targetPort != 0 {
-						ruleTargetPort = targetPort
-					}
-					if ruleBackendName == "" && backendName != "" {
-						ruleBackendName = backendName
-					}
-
 					port := metadata.PortRule{
 						SourcePort:  lbRule.SourcePort,
 						Protocol:    lbRule.Protocol,
-						Path:        rulePath,
-						Hostname:    ruleHostname,
+						Path:        rule.Path,
+						Hostname:    rule.Hostname,
 						Service:     rule.Service,
-						TargetPort:  ruleTargetPort,
-						BackendName: ruleBackendName,
+						TargetPort:  rule.TargetPort,
+						BackendName: rule.BackendName,
 					}
 					rules = append(rules, port)
 				}
@@ -404,11 +382,11 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 				port := metadata.PortRule{
 					SourcePort:  lbRule.SourcePort,
 					Protocol:    lbRule.Protocol,
-					Path:        path,
-					Hostname:    hostname,
+					Path:        lbRule.Path,
+					Hostname:    lbRule.Hostname,
 					Service:     fmt.Sprintf("%s/%s", svc.StackName, svc.Name),
-					TargetPort:  targetPort,
-					BackendName: backendName,
+					TargetPort:  lbRule.TargetPort,
+					BackendName: lbRule.BackendName,
 				}
 				rules = append(rules, port)
 			}
