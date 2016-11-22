@@ -453,7 +453,18 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 		Labels:     labels,
 		LBConfig:   lbConfig,
 	}
-	svcs = append(svcs, svc)
+
+	labels = make(map[string]string)
+	labels["a"] = "b"
+	svc1 := metadata.Service{
+		Kind:       "service",
+		Containers: getContainers("ab"),
+		Labels:     labels,
+		Name:       "a",
+		StackName:  "b",
+	}
+
+	svcs = append(svcs, svc, svc1)
 	return svcs, nil
 }
 
@@ -495,6 +506,13 @@ func (mf tMetaFetcher) GetService(svcName string, stackName string) (*metadata.S
 			Kind:       "service",
 			Containers: getContainers("priority"),
 		}
+	} else if strings.EqualFold(svcName, "a") {
+		svc = &metadata.Service{
+			Kind:       "service",
+			Containers: getContainers("ab"),
+			Name:       "a",
+			StackName:  "b",
+		}
 	}
 
 	return svc, nil
@@ -534,6 +552,12 @@ func getContainers(svcName string) []metadata.Container {
 	} else if strings.EqualFold(svcName, "priority") {
 		c1 := metadata.Container{
 			PrimaryIp: "10.1.1.10",
+			State:     "running",
+		}
+		containers = append(containers, c1)
+	} else if strings.EqualFold(svcName, "ab") {
+		c1 := metadata.Container{
+			PrimaryIp: "10.1.1.11",
 			State:     "running",
 		}
 		containers = append(containers, c1)
@@ -649,5 +673,56 @@ func TestSelectorMatch(t *testing.T) {
 
 	if be.UUID != "baz" {
 		t.Fatalf("Backend name is incorrect %v", be.UUID)
+	}
+}
+
+func TestSelectorMatchNoTargetPort(t *testing.T) {
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
+		Protocol:   "http",
+		SourcePort: 45,
+		Selector:   "a=b",
+		TargetPort: 46,
+		Hostname:   "ab.com",
+		Path:       "/ab",
+	}
+	portRules = append(portRules, port)
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	lbc.processSelector(meta)
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+
+	if len(configs[0].FrontendServices) == 0 {
+		t.Fatal("No frontends are configured for selector based service")
+	}
+
+	fe := configs[0].FrontendServices[0]
+	if len(fe.BackendServices) == 0 {
+		t.Fatal("No backends are configured for selector based service")
+	}
+
+	be := fe.BackendServices[0]
+
+	if fe.Port != 45 {
+		t.Fatalf("Port is incorrect %v", fe.Port)
+	}
+
+	if fe.Protocol != "http" {
+		t.Fatalf("Proto is incorrect %v", fe.Protocol)
+	}
+
+	if be.Host != "ab.com" {
+		t.Fatalf("Host is incorrect %v", be.Host)
+	}
+
+	if be.Path != "/ab" {
+		t.Fatalf("Path is incorrect %v", be.Path)
+	}
+
+	if be.Port != 46 {
+		t.Fatalf("Port is incorrect %v", be.Port)
 	}
 }

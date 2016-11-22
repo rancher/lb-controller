@@ -340,36 +340,57 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	if err != nil {
 		return err
 	}
+
 	for _, lbRule := range lbMeta.PortRules {
 		if lbRule.Selector == "" {
 			rules = append(rules, lbRule)
 			continue
 		}
+
 		for _, svc := range svcs {
 			if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
 				continue
 			}
 			lbConfig := svc.LBConfig
 			if len(lbConfig.PortRules) == 0 {
-				continue
+				if lbRule.TargetPort == 0 {
+					continue
+				}
 			}
 
 			meta, err := getLBMetadata(lbConfig)
 			if err != nil {
 				return err
 			}
-			for _, rule := range meta.PortRules {
+
+			if len(meta.PortRules) > 0 {
+				for _, rule := range meta.PortRules {
+					port := metadata.PortRule{
+						SourcePort:  lbRule.SourcePort,
+						Protocol:    lbRule.Protocol,
+						Path:        rule.Path,
+						Hostname:    rule.Hostname,
+						Service:     rule.Service,
+						TargetPort:  rule.TargetPort,
+						BackendName: rule.BackendName,
+					}
+					rules = append(rules, port)
+				}
+			} else {
+				// register the service to the lb service port rule
+				// having target port is a requirement
 				port := metadata.PortRule{
 					SourcePort:  lbRule.SourcePort,
 					Protocol:    lbRule.Protocol,
-					Path:        rule.Path,
-					Hostname:    rule.Hostname,
-					Service:     rule.Service,
-					TargetPort:  rule.TargetPort,
-					BackendName: rule.BackendName,
+					Path:        lbRule.Path,
+					Hostname:    lbRule.Hostname,
+					Service:     fmt.Sprintf("%s/%s", svc.StackName, svc.Name),
+					TargetPort:  lbRule.TargetPort,
+					BackendName: lbRule.BackendName,
 				}
 				rules = append(rules, port)
 			}
+
 		}
 	}
 
