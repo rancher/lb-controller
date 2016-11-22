@@ -340,36 +340,79 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	if err != nil {
 		return err
 	}
+
 	for _, lbRule := range lbMeta.PortRules {
 		if lbRule.Selector == "" {
 			rules = append(rules, lbRule)
 			continue
 		}
+
+		path := lbRule.Path
+		hostname := lbRule.Hostname
+		targetPort := lbRule.TargetPort
+		backendName := lbRule.BackendName
+
 		for _, svc := range svcs {
 			if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
 				continue
 			}
 			lbConfig := svc.LBConfig
 			if len(lbConfig.PortRules) == 0 {
-				continue
+				if targetPort == 0 {
+					continue
+				}
 			}
 
 			meta, err := getLBMetadata(lbConfig)
 			if err != nil {
 				return err
 			}
-			for _, rule := range meta.PortRules {
+
+			if len(meta.PortRules) > 0 {
+				for _, rule := range meta.PortRules {
+					ruleHostname := rule.Hostname
+					rulePath := rule.Path
+					ruleTargetPort := rule.TargetPort
+					ruleBackendName := rule.BackendName
+					if ruleHostname == "" && hostname != "" {
+						ruleHostname = hostname
+					}
+					if rulePath == "" && path != "" {
+						rulePath = path
+					}
+					if ruleTargetPort == 0 && targetPort != 0 {
+						ruleTargetPort = targetPort
+					}
+					if ruleBackendName == "" && backendName != "" {
+						ruleBackendName = backendName
+					}
+
+					port := metadata.PortRule{
+						SourcePort:  lbRule.SourcePort,
+						Protocol:    lbRule.Protocol,
+						Path:        rulePath,
+						Hostname:    ruleHostname,
+						Service:     rule.Service,
+						TargetPort:  ruleTargetPort,
+						BackendName: ruleBackendName,
+					}
+					rules = append(rules, port)
+				}
+			} else {
+				// register the service to the lb service port rule
+				// having target port is a requirement
 				port := metadata.PortRule{
 					SourcePort:  lbRule.SourcePort,
 					Protocol:    lbRule.Protocol,
-					Path:        rule.Path,
-					Hostname:    rule.Hostname,
-					Service:     rule.Service,
-					TargetPort:  rule.TargetPort,
-					BackendName: rule.BackendName,
+					Path:        path,
+					Hostname:    hostname,
+					Service:     fmt.Sprintf("%s/%s", svc.StackName, svc.Name),
+					TargetPort:  targetPort,
+					BackendName: backendName,
 				}
 				rules = append(rules, port)
 			}
+
 		}
 	}
 
