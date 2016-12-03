@@ -18,6 +18,10 @@ var (
 	lbp provider.LBProvider
 )
 
+func init() {
+	logrus.SetOutput(os.Stdout)
+}
+
 func setEnv() {
 	flag.Parse()
 	lbc = controller.GetController(*lbControllerName)
