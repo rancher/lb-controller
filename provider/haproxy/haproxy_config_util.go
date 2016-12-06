@@ -80,6 +80,18 @@ backend mystack_foo
 backend customUUID
     server $IP <server parameters>
 */
+
+var keywords = []string{"backend", "frontend", "global", "defaults", "listen", "userlist", "peers", "mailers"}
+
+func isDirective(directive string) bool {
+	for _, keyword := range keywords {
+		if strings.EqualFold(directive, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	customConfigMap := make(map[string]sort.StringSlice)
 	var key string
@@ -92,7 +104,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 		if strings.TrimSpace(prefix) == "" {
 			continue
 		}
-		if strings.EqualFold(prefix, "backend") || strings.HasPrefix(conf, serverPrefix) || strings.EqualFold(prefix, "frontend") || strings.EqualFold(prefix, "global") || strings.EqualFold(prefix, "defaults") || strings.EqualFold(prefix, "listen") {
+		if isDirective(prefix) || strings.HasPrefix(conf, serverPrefix) {
 			//server config comes in one line, so process it differently
 			if strings.HasPrefix(conf, serverPrefix) {
 				// the key would be a backend at this point

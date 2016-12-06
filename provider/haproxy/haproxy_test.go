@@ -88,7 +88,7 @@ func TestBuildCustomConfigOverride(t *testing.T) {
 	}
 }
 
-func TestBuildCustomConfigExtra(t *testing.T) {
+func TestBuildCustomConfigExtraSection(t *testing.T) {
 	customConfig, err := getCustomConfig("custom_config_extra")
 	if err != nil {
 		t.Fatalf("Failed to read custom config: %v", err)
@@ -166,7 +166,7 @@ func TestBuildCustomConfigExtraFrontend(t *testing.T) {
 	}
 }
 
-func TestBuildCustomConfigBackend(t *testing.T) {
+func TestBuildCustomConfigBackendSection(t *testing.T) {
 	customConfig, err := getCustomConfig("custom_config_frontend_backend")
 	if err != nil {
 		t.Fatalf("Failed to read custom config: %v", err)
@@ -390,5 +390,26 @@ func TestBuildCustomConfigFrontendBind(t *testing.T) {
 
 	if !lbConfig.FrontendServices[0].AcceptProxy {
 		t.Fatal("Accept proxy is not set on the config")
+	}
+}
+
+func TestBuildCustomConfigUsers(t *testing.T) {
+	customConfig, err := getCustomConfig("custom_config_users")
+	if err != nil {
+		t.Fatalf("Failed to read custom config: %v", err)
+	}
+	lbConfig := &config.LoadBalancerConfig{}
+	err = lbp.ProcessCustomConfig(lbConfig, customConfig)
+	if err != nil {
+		t.Fatalf("Error while process custom config: %v", err)
+	}
+
+	result, err := validateCustomConfig("custom_config_users_resp", lbConfig.Config)
+	if err != nil {
+		t.Fatalf("Error validating custom config: %v", err)
+	}
+
+	if !result {
+		t.Fatal("Configs don't match")
 	}
 }
