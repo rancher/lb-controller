@@ -1,8 +1,8 @@
 global
     chroot /var/lib/haproxy
-    daemon 
+    daemon
     group haproxy
-    log 127.0.0.1:8514 local0 
+    log 127.0.0.1:8514 local0
     log 127.0.0.1:8514 local1 notice
     maxconn 4096
     maxpipes 1024
@@ -23,9 +23,9 @@ defaults
     log global
     maxconn 4096
     mode tcp
-    option forwardfor 
-    option http-server-close 
-    option redispatch 
+    option forwardfor
+    option http-server-close
+    option redispatch
     option tcplog
     retries 3
     timeout client 50000

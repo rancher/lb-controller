@@ -1,0 +1,7 @@
+global
+ userlist L1
+   group G1 users tiger,scott
+   group G2 users xdb,scott
+   user tiger password mypass
+   user scott insecure-password elgato
+   user xdb insecure-password hello

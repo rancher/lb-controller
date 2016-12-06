@@ -2,6 +2,7 @@ package haproxy
 
 import (
 	"fmt"
+	//"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/config"
 	"sort"
 	"strings"
@@ -19,8 +20,8 @@ func GetDefaultConfig() map[string]map[string]string {
 	global["ssl-default-server-ciphers"] = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:ECDHE-RSA-DES-CBC3-SHA:ECDHE-ECDSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA"
 	global["ssl-default-bind-options"] = "no-sslv3 no-tlsv10"
 	global["chroot"] = "/var/lib/haproxy"
-	global["user"] = "haproxy"
-	global["group"] = "haproxy"
+	global["user haproxy"] = ""
+	global["group haproxy"] = ""
 	global["daemon"] = ""
 	global["log 127.0.0.1:8514 local0"] = ""
 	global["log 127.0.0.1:8514 local1"] = "notice"
@@ -80,33 +81,45 @@ backend mystack_foo
 backend customUUID
     server $IP <server parameters>
 */
+
+var keywords = []string{"backend", "frontend", "global", "defaults", "listen", "userlist", "peers", "mailers"}
+
+func isDirective(directive string) bool {
+	for _, keyword := range keywords {
+		if strings.EqualFold(directive, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
-	customConfigMap := make(map[string]sort.StringSlice)
+	customConfigMap := make(map[string][]string)
 	var key string
 	defaultConfig := GetDefaultConfig()
 	serverPrefix := "server $IP"
 	for _, conf := range strings.Split(customConfig, "\n") {
-		conf = strings.TrimSpace(conf)
-		keys := strings.SplitN(conf, " ", 2)
+		trimmedConf := strings.TrimSpace(conf)
+		keys := strings.SplitN(trimmedConf, " ", 2)
 		prefix := keys[0]
 		if strings.TrimSpace(prefix) == "" {
 			continue
 		}
-		if strings.EqualFold(prefix, "backend") || strings.HasPrefix(conf, serverPrefix) || strings.EqualFold(prefix, "frontend") || strings.EqualFold(prefix, "global") || strings.EqualFold(prefix, "defaults") || strings.EqualFold(prefix, "listen") {
+		if isDirective(prefix) || strings.HasPrefix(trimmedConf, serverPrefix) {
 			//server config comes in one line, so process it differently
-			if strings.HasPrefix(conf, serverPrefix) {
+			if strings.HasPrefix(trimmedConf, serverPrefix) {
 				// the key would be a backend at this point
 				// so the server key would become backendUUID_$IP
 				backendKey := fmt.Sprintf("%s_$IP", key)
 				backendValue := ""
-				serverConf := strings.SplitN(conf, serverPrefix, 2)
+				serverConf := strings.SplitN(trimmedConf, serverPrefix, 2)
 				if len(serverConf) > 1 {
 					backendValue = serverConf[1]
 				}
 				customConfigMap[backendKey] = append(customConfigMap[backendKey], backendValue)
 				continue
 			} else if len(keys) > 1 {
-				key = fmt.Sprintf("%s %s", strings.TrimSpace(keys[0]), strings.TrimSpace(keys[1]))
+				key = strings.TrimSpace(fmt.Sprintf("%s %s", strings.TrimSpace(keys[0]), strings.TrimSpace(keys[1])))
 			} else {
 				key = prefix
 			}
@@ -116,7 +129,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 		//exclude values from defalt configs if they are present in custom
 
 		for k := range defaultConfig[key] {
-			if strings.EqualFold(strings.TrimSpace(conf), key) || strings.HasPrefix(strings.TrimSpace(conf), fmt.Sprintf("%s ", k)) {
+			if strings.EqualFold(trimmedConf, key) || strings.HasPrefix(trimmedConf, fmt.Sprintf("%s ", k)) {
 				delete(defaultConfig[key], k)
 			}
 		}
@@ -124,11 +137,14 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 
 	// append whatever left in default config
 	for k := range defaultConfig {
+		var defaultValues sort.StringSlice
 		for defaultKey, defaultValue := range defaultConfig[k] {
-			value := fmt.Sprintf("%s %s", strings.TrimSpace(defaultKey), strings.TrimSpace(defaultValue))
-			customConfigMap[k] = append(customConfigMap[k], value)
+			value := strings.TrimSpace(fmt.Sprintf("%s %s", strings.TrimSpace(defaultKey), strings.TrimSpace(defaultValue)))
+			defaultValues = append(defaultValues, value)
 		}
+		customConfigMap[k] = append(customConfigMap[k], confToString(defaultValues, true, false))
 	}
+
 	processedConfigs := make(map[string]string)
 	for _, fe := range lbConfig.FrontendServices {
 		var policy *config.StickinessPolicy
@@ -140,7 +156,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 		feConfigName := fmt.Sprintf("%s %s", "frontend", fe.Name)
 		var custom []string
 		for _, value := range customConfigMap[feConfigName] {
-			if strings.EqualFold(value, "accept-proxy") {
+			if strings.EqualFold(strings.TrimSpace(value), "accept-proxy") {
 				fe.AcceptProxy = true
 				continue
 			}
@@ -148,7 +164,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 		}
 
 		//TODO - have to add support for custom bind parameters
-		fe.Config = confToString(custom)
+		fe.Config = confToString(custom, false, true)
 		processedConfigs[feConfigName] = ""
 		for _, be := range fe.BackendServices {
 			healthcheck := false
@@ -161,7 +177,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			processedConfigs[beConfigName] = ""
 			beConfig = append(beConfig, customConfigMap[beConfigName]...)
 			beConfig = append(beConfig, customConfigMap["backend"]...)
-			be.Config = confToString(beConfig)
+			be.Config = confToString(beConfig, false, true)
 			//append healthcheck
 			if healthcheck {
 				be.Config = fmt.Sprintf("%s\n    timeout check %v", be.Config, be.HealthCheck.ResponseTimeout)
@@ -192,7 +208,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 
 			for _, ep := range be.Endpoints {
 				epConfigName := fmt.Sprintf("%s_$IP", beConfigName)
-				ep.Config = confToString(customConfigMap[epConfigName])
+				ep.Config = confToString(customConfigMap[epConfigName], false, false)
 				processedConfigs[epConfigName] = ""
 				//append health check
 				if healthcheck {
@@ -214,11 +230,11 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			continue
 		}
 		if _, ok := processedConfigs[k]; !ok {
-			extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v))
+			extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v, false, true))
 		}
 	}
 
-	lbConfig.Config = fmt.Sprintf("global\n%s\n\ndefaults\n%s", confToString(customConfigMap["global"]), confToString(customConfigMap["defaults"]))
+	lbConfig.Config = fmt.Sprintf("global\n%s\n\ndefaults\n%s", confToString(customConfigMap["global"], false, true), confToString(customConfigMap["defaults"], false, true))
 	if extraConfig != "" {
 		lbConfig.Config = fmt.Sprintf("%s\n\n%s", lbConfig.Config, extraConfig)
 	}
@@ -226,10 +242,15 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 	return nil
 }
 
-func confToString(conf sort.StringSlice) string {
+func confToString(conf sort.StringSlice, sortValues bool, tab bool) string {
 	if len(conf) == 0 {
 		return ""
 	}
-	conf.Sort()
-	return fmt.Sprintf("    %s", strings.Join(conf, "\n    "))
+	if sortValues {
+		conf.Sort()
+	}
+	if tab {
+		return fmt.Sprintf("    %s", strings.Join(conf, "\n    "))
+	}
+	return strings.Join(conf, "\n    ")
 }

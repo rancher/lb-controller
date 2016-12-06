@@ -1,5 +1,4 @@
 global
-       maxconnrate 100
     chroot /var/lib/haproxy
     daemon
     group haproxy
@@ -14,7 +13,6 @@ global
     user haproxy
 
 defaults
-       balance source
     errorfile 400 /etc/haproxy/errors/400.http
     errorfile 403 /etc/haproxy/errors/403.http
     errorfile 408 /etc/haproxy/errors/408.http
@@ -33,3 +31,10 @@ defaults
     timeout client 50000
     timeout connect 5000
     timeout server 50000
+
+userlist L1
+       group G1 users tiger,scott
+       group G2 users xdb,scott
+       user tiger password mypass
+       user scott insecure-password elgato
+       user xdb insecure-password hello
