@@ -5,6 +5,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/config"
 	"io/ioutil"
+	"strings"
 	"testing"
 )
 
@@ -301,7 +302,6 @@ func TestBuildCustomConfigBackendServer(t *testing.T) {
 	if !result {
 		t.Fatal("Configs don't match")
 	}
-	logrus.Infof("end point is %v", lbConfig.FrontendServices[0].BackendServices[0].Endpoints[0])
 	result, err = validateCustomConfig("custom_config_server_resp", lbConfig.FrontendServices[0].BackendServices[0].Endpoints[0].Config)
 	if err != nil {
 		t.Fatalf("Error validating custom config: %v", err)
@@ -310,7 +310,6 @@ func TestBuildCustomConfigBackendServer(t *testing.T) {
 	if !result {
 		t.Fatal("Configs don't match")
 	}
-
 }
 
 func getCustomConfig(name string) (string, error) {
@@ -412,4 +411,49 @@ func TestBuildCustomConfigUsers(t *testing.T) {
 	if !result {
 		t.Fatal("Configs don't match")
 	}
+}
+
+func TestCnameEndpointServer(t *testing.T) {
+	backends := []*config.BackendService{}
+	var eps config.Endpoints
+	ep := &config.Endpoint{
+		Name:    "s1",
+		IP:      "google.com",
+		Port:    90,
+		IsCname: true,
+	}
+	eps = append(eps, ep)
+	backend := &config.BackendService{
+		UUID:      "google.com",
+		Port:      8080,
+		Protocol:  config.HTTPProto,
+		Endpoints: eps,
+	}
+	backends = append(backends, backend)
+
+	frontends := []*config.FrontendService{}
+	frontend := &config.FrontendService{
+		Name:            "google.com",
+		Port:            80,
+		Protocol:        config.HTTPProto,
+		BackendServices: backends,
+	}
+	frontends = append(frontends, frontend)
+
+	lbConfig := &config.LoadBalancerConfig{
+		FrontendServices: frontends,
+	}
+	err := lbp.ProcessCustomConfig(lbConfig, "")
+	if err != nil {
+		t.Fatalf("Error while process custom config: %v", err)
+	}
+
+	expected := "  check resolvers rancher"
+	actual := lbConfig.FrontendServices[0].BackendServices[0].Endpoints[0].Config
+	result := strings.EqualFold(expected, actual)
+
+	if !result {
+		t.Fatalf("Configs don't match; expected [%s], actual [%s]", expected, actual)
+	}
+
 }

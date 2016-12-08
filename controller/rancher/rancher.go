@@ -498,6 +498,16 @@ func (lbc *loadBalancerController) getExternalServiceEndpoints(svc *metadata.Ser
 		}
 		eps = append(eps, ep)
 	}
+
+	if svc.Hostname != "" {
+		ep := &config.Endpoint{
+			Name:    svc.Hostname,
+			IP:      svc.Hostname,
+			Port:    targetPort,
+			IsCname: true,
+		}
+		eps = append(eps, ep)
+	}
 	return eps
 }
 

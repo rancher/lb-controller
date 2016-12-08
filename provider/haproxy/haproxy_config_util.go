@@ -211,10 +211,21 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 				ep.Config = confToString(customConfigMap[epConfigName], false, false)
 				processedConfigs[epConfigName] = ""
 				//append health check
+
 				if healthcheck {
 					hc := fmt.Sprintf("check port %v inter %v rise %v fall %v", be.HealthCheck.Port, be.HealthCheck.Interval, be.HealthCheck.HealthyThreshold, be.HealthCheck.UnhealthyThreshold)
 					ep.Config = fmt.Sprintf("%s %s", ep.Config, hc)
 				}
+				if ep.IsCname {
+					// health check is required for the fqdn resolution
+					resolver := " check resolvers rancher"
+					if healthcheck {
+						resolver = " resolvers rancher"
+					}
+
+					ep.Config = fmt.Sprintf("%s %s", ep.Config, resolver)
+				}
+
 				//append cookie policy
 				if policy != nil {
 					ep.Config = fmt.Sprintf("%s cookie %s", ep.Config, ep.Name)

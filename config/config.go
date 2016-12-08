@@ -61,10 +61,11 @@ type BackendService struct {
 }
 
 type Endpoint struct {
-	Name   string
-	IP     string
-	Port   int
-	Config string
+	Name    string
+	IP      string
+	Port    int
+	Config  string
+	IsCname bool
 }
 
 type FrontendService struct {
