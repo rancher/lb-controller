@@ -513,6 +513,11 @@ func (mf tMetaFetcher) GetService(svcName string, stackName string) (*metadata.S
 			Name:       "a",
 			StackName:  "b",
 		}
+	} else if strings.EqualFold(svcName, "extcname") {
+		svc = &metadata.Service{
+			Kind:     "externalService",
+			Hostname: "google.com",
+		}
 	}
 
 	return svc, nil
@@ -563,6 +568,35 @@ func getContainers(svcName string) []metadata.Container {
 		containers = append(containers, c1)
 	}
 	return containers
+}
+
+func TestExternalCname(t *testing.T) {
+	portRules := []metadata.PortRule{}
+	port := metadata.PortRule{
+		Protocol:   "tcp",
+		Service:    "default/extcname",
+		TargetPort: 44,
+		SourcePort: 45,
+	}
+	portRules = append(portRules, port)
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+
+	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
+	if len(eps) != 1 {
+		t.Fatalf("Invalid endpoints length %v", len(eps))
+	}
+
+	if eps[0].IP != "google.com" {
+		t.Fatalf("Invalid endpoint target, expected [google.com], actual %s", eps[0].IP)
+	}
+
+	if !eps[0].IsCname {
+		t.Fatal("IsCname should have been set to true, but actual value is false")
+	}
 }
 
 func (mf tMetaFetcher) GetSelfService() (metadata.Service, error) {
