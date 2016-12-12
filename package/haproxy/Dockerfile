@@ -26,6 +26,10 @@ RUN cat /etc/haproxy/logrotate.cfg >> /etc/logrotate.d/haproxy
 ENV TINI_VERSION v0.10.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod +x /tini
+
+# So we do not write to the COW filesystem
+VOLUME /var/log/haproxy
+
 ENTRYPOINT ["/tini", "--"]
 
 CMD ["lb-controller", "--controller", "rancher", "--provider",  "haproxy"]
