@@ -2,10 +2,11 @@ package haproxy
 
 import (
 	"fmt"
-	//"github.com/Sirupsen/logrus"
-	"github.com/rancher/lb-controller/config"
 	"sort"
 	"strings"
+
+	"github.com/rancher/lb-controller/config"
+	//"github.com/Sirupsen/logrus"
 )
 
 func GetDefaultConfig() map[string]map[string]string {
@@ -23,8 +24,6 @@ func GetDefaultConfig() map[string]map[string]string {
 	global["user haproxy"] = ""
 	global["group haproxy"] = ""
 	global["daemon"] = ""
-	global["log 127.0.0.1:8514 local0"] = ""
-	global["log 127.0.0.1:8514 local1"] = "notice"
 
 	defaults["mode"] = "tcp"
 	defaults["option redispatch"] = ""
@@ -42,8 +41,6 @@ func GetDefaultConfig() map[string]map[string]string {
 	defaults["errorfile 502"] = "/etc/haproxy/errors/502.http"
 	defaults["errorfile 503"] = "/etc/haproxy/errors/503.http"
 	defaults["errorfile 504"] = "/etc/haproxy/errors/504.http"
-	defaults["log"] = "global"
-	defaults["option"] = "tcplog"
 
 	backend["http-request add-header X-Forwarded-Proto"] = "https if { ssl_fc } forwarded_proto"
 	backend["http-request add-header X-Forwarded-Port"] = "%[dst_port] if forwarded_port"
