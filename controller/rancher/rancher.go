@@ -363,6 +363,7 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 				return err
 			}
 
+			svcName := fmt.Sprintf("%s/%s", svc.StackName, svc.Name)
 			if len(meta.PortRules) > 0 {
 				for _, rule := range meta.PortRules {
 					port := metadata.PortRule{
@@ -370,7 +371,7 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 						Protocol:    lbRule.Protocol,
 						Path:        rule.Path,
 						Hostname:    rule.Hostname,
-						Service:     rule.Service,
+						Service:     svcName,
 						TargetPort:  rule.TargetPort,
 						BackendName: rule.BackendName,
 					}
@@ -384,7 +385,7 @@ func (lbc *loadBalancerController) processSelector(lbMeta *LBMetadata) error {
 					Protocol:    lbRule.Protocol,
 					Path:        lbRule.Path,
 					Hostname:    lbRule.Hostname,
-					Service:     fmt.Sprintf("%s/%s", svc.StackName, svc.Name),
+					Service:     svcName,
 					TargetPort:  lbRule.TargetPort,
 					BackendName: lbRule.BackendName,
 				}

@@ -435,7 +435,7 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 		Hostname:    "baz.com",
 		TargetPort:  46,
 		BackendName: "baz",
-		Service:     "default/baz",
+		//Service:     "default/baz",
 	}
 
 	var portRules []metadata.PortRule
@@ -452,6 +452,8 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 		Containers: getContainers("selector"),
 		Labels:     labels,
 		LBConfig:   lbConfig,
+		Name:       "baz",
+		StackName:  "default",
 	}
 
 	labels = make(map[string]string)
