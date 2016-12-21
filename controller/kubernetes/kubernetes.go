@@ -380,7 +380,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 		}
 
 		for _, rule := range ing.Spec.Rules {
-			logrus.Infof("Processing ingress rule %v", rule)
+			logrus.Debugf("Processing ingress rule %v", rule)
 			// process http rules only
 			if rule.IngressRuleValue.HTTP == nil {
 				continue
