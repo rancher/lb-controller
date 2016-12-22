@@ -1,6 +1,8 @@
 package rancher
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-rancher-metadata/metadata"
@@ -493,7 +495,7 @@ func (lbc *loadBalancerController) getExternalServiceEndpoints(svc *metadata.Ser
 	var eps config.Endpoints
 	for _, e := range svc.ExternalIps {
 		ep := &config.Endpoint{
-			Name: e,
+			Name: hashIP(e),
 			IP:   e,
 			Port: targetPort,
 		}
@@ -517,7 +519,7 @@ func (lbc *loadBalancerController) getRegularServiceEndpoints(svc *metadata.Serv
 	for _, c := range svc.Containers {
 		if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
 			ep := &config.Endpoint{
-				Name: c.PrimaryIp,
+				Name: hashIP(c.PrimaryIp),
 				IP:   c.PrimaryIp,
 				Port: targetPort,
 			}
@@ -575,4 +577,10 @@ func (lbc *loadBalancerController) requeue(key string) {
 	lbc.incrementalBackoff = lbc.incrementalBackoff + lbc.incrementalBackoffInterval
 	time.Sleep(time.Duration(lbc.incrementalBackoff) * time.Second)
 	lbc.syncQueue.Requeue(key, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
+}
+
+func hashIP(ip string) string {
+	h := sha1.New()
+	h.Write([]byte(ip))
+	return hex.EncodeToString(h.Sum(nil))
 }
