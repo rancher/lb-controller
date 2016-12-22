@@ -187,7 +187,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 				if policy.Cookie == "" {
 					policy.Cookie = be.UUID
 				}
-				cookieLine := fmt.Sprintf("cookie %s_%s %s", policy.Cookie, be.UUID, policy.Mode)
+				cookieLine := fmt.Sprintf("cookie %s %s", policy.Cookie, policy.Mode)
 				if policy.Indirect {
 					cookieLine = fmt.Sprintf("%s indirect", cookieLine)
 				}

@@ -419,7 +419,7 @@ func TestRuleFields(t *testing.T) {
 			t.Fatalf("Invalid ip %v", ip)
 		}
 
-		if ep.Name != ep.IP {
+		if !(ep.Name == "47ccfd4e625996c751ea49c3ca9d4c68f39fe477" || ep.Name == "50c65454e2804da4e25294f7a4a3efe332acde0e") {
 			t.Fatalf("Invalid ep name %v", ep.Name)
 		}
 		if ep.Port != 13 {
