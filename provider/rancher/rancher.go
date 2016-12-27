@@ -25,6 +25,7 @@ const (
 	controllerStackName        string = "kubernetes-ingress-lbs"
 	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
 	lbSvcNameSeparator         string = "-rancherlb-"
+	rancherSchedulerPrefix     string = "io.rancher.scheduler."
 )
 
 type LBProvider struct {
@@ -443,6 +444,12 @@ func (lbp *LBProvider) cleanupLBService(lb *client.LoadBalancerService, lbConfig
 		return nil
 	}
 
+	if schedulerLabelsChanged(lb.LaunchConfig.Labels, lbConfig.Annotations) {
+		logrus.Infof("Scheduling labels changed for LB service [%s], need to recreate", lb.Name)
+		lbp.deleteLBService(lb, true)
+		return nil
+	}
+
 	return lb
 }
 
@@ -460,6 +467,36 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	fmtName = lbp.formatLBName(lbConfigName, true)
 	logrus.Debugf("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
+}
+
+func schedulerLabelsChanged(oldLabels map[string]interface{}, newLabels map[string]string) bool {
+	for k, v1 := range newLabels {
+		if !strings.HasPrefix(k, rancherSchedulerPrefix) {
+			continue
+		}
+		key := rancherSchedulerPrefix + strings.Replace(k[len(rancherSchedulerPrefix):], ".", ":", 1)
+		v2, ok := oldLabels[key]
+		if !ok {
+			return true
+		}
+		if !strings.EqualFold(v1, v2.(string)) {
+			return true
+		}
+	}
+	for k, v1 := range oldLabels {
+		if !strings.HasPrefix(k, rancherSchedulerPrefix) {
+			continue
+		}
+		key := rancherSchedulerPrefix + strings.Replace(k[len(rancherSchedulerPrefix):], ":", ".", 1)
+		v2, ok := newLabels[key]
+		if !ok {
+			return true
+		}
+		if !strings.EqualFold(v2, v1.(string)) {
+			return true
+		}
+	}
+	return false
 }
 
 func portsChanged(newPorts []string, oldPorts []string) bool {
@@ -517,6 +554,20 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 	}
 	imageUUID = fmt.Sprintf("docker:%s", imageUUID)
 
+	scale := 0
+	if scaleStr, ok := lbConfig.Annotations["scale"]; ok {
+		scale, _ = strconv.Atoi(scaleStr)
+	}
+
+	rancherLabels := map[string]interface{}{}
+
+	for k, v := range lbConfig.Annotations {
+		if strings.HasPrefix(k, rancherSchedulerPrefix) {
+			key := rancherSchedulerPrefix + strings.Replace(k[len(rancherSchedulerPrefix):], ".", ":", 1)
+			rancherLabels[key] = v
+		}
+	}
+
 	name := lbp.formatLBName(lbConfig.Name, false)
 	lb = &client.LoadBalancerService{
 		Name:    name,
@@ -524,10 +575,11 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 		LaunchConfig: &client.LaunchConfig{
 			Ports:     lbPorts,
 			ImageUuid: imageUUID,
+			Labels:    rancherLabels,
 		},
 		ExternalId: fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
 		LbConfig:   &client.LbConfig{},
-		Scale:      int64(lbConfig.Scale),
+		Scale:      int64(scale),
 	}
 
 	lb, err = lbp.client.LoadBalancerService.Create(lb)

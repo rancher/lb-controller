@@ -81,7 +81,7 @@ type LoadBalancerConfig struct {
 	DefaultCert      *Certificate
 	Certs            []*Certificate
 	Name             string
-	Scale            int
+	Annotations      map[string]string
 	FrontendServices FrontendServices
 	Config           string
 	StickinessPolicy *StickinessPolicy
