@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     openssl \
     libssl-dev \
     rsyslog \
+    wget \
     software-properties-common && \
     add-apt-repository ppa:vbernat/haproxy-1.6 && \
     apt-get update && apt-get install -y haproxy && \
@@ -27,9 +28,15 @@ ENV TINI_VERSION v0.10.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod +x /tini
 
+ENV SSL_SCRIPT_COMMIT 98660ada3d800f653fc1f105771b5173f9d1a019
+RUN wget -O /usr/bin/update-rancher-ssl https://raw.githubusercontent.com/rancher/rancher/${SSL_SCRIPT_COMMIT}/server/bin/update-rancher-ssl && \
+    chmod +x /usr/bin/update-rancher-ssl
+
+COPY lb-controller.sh /usr/bin/
+
 # So we do not write to the COW filesystem
 VOLUME /var/log/haproxy
 
 ENTRYPOINT ["/tini", "--"]
 
-CMD ["lb-controller", "--controller", "rancher", "--provider",  "haproxy"]
+CMD ["lb-controller.sh", "--controller", "rancher", "--provider",  "haproxy"]
