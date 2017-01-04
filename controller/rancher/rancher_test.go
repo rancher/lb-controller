@@ -2,22 +2,23 @@ package rancher
 
 import (
 	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	utils "github.com/rancher/lb-controller/utils"
 	"strings"
 	"testing"
 )
 
-var lbc *loadBalancerController
+var lbc *LoadBalancerController
 
 func init() {
-	lbc = &loadBalancerController{
+	lbc = &LoadBalancerController{
 		stopCh:                     make(chan struct{}),
 		incrementalBackoff:         0,
 		incrementalBackoffInterval: 5,
-		metaFetcher:                tMetaFetcher{},
-		certFetcher:                tCertFetcher{},
-		lbProvider:                 &tProvider{},
+		MetaFetcher:                tMetaFetcher{},
+		CertFetcher:                tCertFetcher{},
+		LBProvider:                 &tProvider{},
 	}
 }
 
@@ -45,7 +46,7 @@ func TestTCPRuleFields(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	be := configs[0].FrontendServices[0].BackendServices[0]
 	if be.Host != "" {
@@ -77,7 +78,7 @@ func TestTwoRunningServices(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 3 {
@@ -107,7 +108,7 @@ func TestTwoSourcePorts(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	fes := configs[0].FrontendServices
 	if len(fes) != 2 {
@@ -143,7 +144,7 @@ func TestOneSourcePortTwoRules(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	fes := configs[0].FrontendServices
 	if len(fes) != 1 {
@@ -177,7 +178,7 @@ func TestStoppedAndRunningInstance(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 1 {
@@ -198,7 +199,7 @@ func TestStoppedInstance(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 0 {
@@ -259,7 +260,7 @@ func TestPriority(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	bes := configs[0].FrontendServices[0].BackendServices
 	if len(bes) != 5 {
@@ -309,7 +310,7 @@ func TestPriorityExtra(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	bes := configs[0].FrontendServices[0].BackendServices
 	if len(bes) != 2 {
@@ -332,7 +333,7 @@ func TestPriorityExtra(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ = lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ = lbc.BuildConfigFromMetadata("test", "", meta)
 	bes = configs[0].FrontendServices[0].BackendServices
 	if len(bes) != 2 {
 		t.Fatalf("Invalid backend length [%v]", len(bes))
@@ -363,7 +364,7 @@ func TestRuleFields(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, err := lbc.BuildConfigFromMetadata("test", meta)
+	configs, err := lbc.BuildConfigFromMetadata("test", "", meta)
 	if err != nil {
 		t.Fatalf("Failed to build the config from metadata %v", err)
 	}
@@ -470,7 +471,7 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return svcs, nil
 }
 
-func (mf tMetaFetcher) GetService(svcName string, stackName string) (*metadata.Service, error) {
+func (mf tMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {
 	var svc *metadata.Service
 	if strings.EqualFold(svcName, "foo") {
 		svc = &metadata.Service{
@@ -609,8 +610,12 @@ func (mf tMetaFetcher) GetSelfService() (metadata.Service, error) {
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 }
 
-func (cf tCertFetcher) fetchCertificate(certName string) (*config.Certificate, error) {
+func (cf tCertFetcher) FetchCertificate(certName string) (*config.Certificate, error) {
 	return nil, nil
+}
+
+func (cf tCertFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error {
+	return nil
 }
 
 func (p *tProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
@@ -657,7 +662,7 @@ func TestSelectorNoMatch(t *testing.T) {
 
 	lbc.processSelector(meta)
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	if len(configs[0].FrontendServices) != 0 {
 		t.Fatalf("Incorrect number of frontend services %v", len(configs[0].FrontendServices))
@@ -678,7 +683,7 @@ func TestSelectorMatch(t *testing.T) {
 
 	lbc.processSelector(meta)
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	fe := configs[0].FrontendServices[0]
 	if len(fe.BackendServices) == 0 {

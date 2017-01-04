@@ -14,8 +14,7 @@ type LBMetadata struct {
 	StickinessPolicy config.StickinessPolicy `json:"stickiness_policy"`
 }
 
-// converts an interface to LBMetadata
-func getLBMetadata(data interface{}) (*LBMetadata, error) {
+func GetLBMetadata(data interface{}) (*LBMetadata, error) {
 	lbMeta := &LBMetadata{}
 	if err := convert(data, lbMeta); err != nil {
 		return nil, err
