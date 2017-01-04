@@ -586,7 +586,7 @@ func TestExternalCname(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 1 {
@@ -734,7 +734,7 @@ func TestSelectorMatchNoTargetPort(t *testing.T) {
 
 	lbc.processSelector(meta)
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", meta)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
 
 	if len(configs[0].FrontendServices) == 0 {
 		t.Fatal("No frontends are configured for selector based service")
