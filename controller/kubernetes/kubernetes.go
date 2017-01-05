@@ -438,16 +438,12 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			frontEndServices = append(frontEndServices, frontEndHTTPSService)
 		}
 
-		scale := 0
-		if scaleStr, ok := params["scale"]; ok {
-			scale, _ = strconv.Atoi(scaleStr)
-		}
 		lbConfig := &config.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
-			Scale:            scale,
 			FrontendServices: frontEndServices,
 			Config:           params["config"],
 			DefaultCert:      cert,
+			Annotations:      params,
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
 	}
