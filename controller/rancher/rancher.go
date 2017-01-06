@@ -205,6 +205,9 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName string, envUUI
 		if err != nil {
 			return nil, err
 		}
+		if service == nil || !IsActiveService(service) {
+			continue
+		}
 		eps, err := lbc.getServiceEndpoints(service, rule.TargetPort, true)
 		if err != nil {
 			return nil, err
@@ -455,6 +458,16 @@ func getServiceHealthCheck(svc *metadata.Service) (*config.HealthCheck, error) {
 
 func (mf RMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return mf.MetadataClient.GetServices()
+}
+
+func IsActiveService(svc *metadata.Service) bool {
+	inactiveStates := []string{"inactive", "deactivating", "removed", "removing"}
+	for _, state := range inactiveStates {
+		if strings.EqualFold(svc.State, state) {
+			return false
+		}
+	}
+	return true
 }
 
 func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {

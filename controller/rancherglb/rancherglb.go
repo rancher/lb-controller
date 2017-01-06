@@ -141,9 +141,18 @@ func (lbc *glbController) GetGLBConfigs(glbSvc metadata.Service) ([]*config.Load
 			if !rancher.IsSelectorMatch(glbRule.Selector, lbSvc.Labels) {
 				continue
 			}
+
+			if !rancher.IsActiveService(&lbSvc) {
+				// cleanup public endpoints
+				eps := []client.PublicEndpoint{}
+				logrus.Debugf("cleaning up endpoints for inactive lb uuid [%v]", lbSvc.UUID)
+				if err := lbc.updateEndpoints(&lbSvc, eps); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			lbConfig := lbSvc.LBConfig
 			if len(lbConfig.PortRules) == 0 {
-				logrus.Info("port rules is 0")
 				continue
 			}
 			sourcePort := glbRule.SourcePort

@@ -207,6 +207,35 @@ func TestStoppedInstance(t *testing.T) {
 	}
 }
 
+func TestInactiveService(t *testing.T) {
+	portRules := []metadata.PortRule{}
+	port1 := metadata.PortRule{
+		Protocol:   "tcp",
+		Service:    "default/inactive",
+		TargetPort: 44,
+		SourcePort: 45,
+	}
+	port2 := metadata.PortRule{
+		Protocol:   "tcp",
+		Service:    "default/foo",
+		TargetPort: 46,
+		SourcePort: 45,
+	}
+	portRules = append(portRules, port1)
+	portRules = append(portRules, port2)
+	meta := &LBMetadata{
+		PortRules: portRules,
+	}
+
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", meta)
+
+	fe := configs[0].FrontendServices[0]
+	bes := fe.BackendServices
+	if len(bes) != 1 {
+		t.Fatalf("Invalid backends length, expected 1 for 1 active and 1 inactive service: [%v]", len(bes))
+	}
+}
+
 func TestPriority(t *testing.T) {
 	portRules := []metadata.PortRule{}
 	port0 := metadata.PortRule{
@@ -521,6 +550,12 @@ func (mf tMetaFetcher) GetService(envUUID string, svcName string, stackName stri
 			Kind:     "externalService",
 			Hostname: "google.com",
 		}
+	} else if strings.EqualFold(svcName, "inactive") {
+		svc = &metadata.Service{
+			Kind:       "service",
+			State:      "inactive",
+			Containers: getContainers("inactive"),
+		}
 	}
 
 	return svc, nil
@@ -566,6 +601,12 @@ func getContainers(svcName string) []metadata.Container {
 	} else if strings.EqualFold(svcName, "ab") {
 		c1 := metadata.Container{
 			PrimaryIp: "10.1.1.11",
+			State:     "running",
+		}
+		containers = append(containers, c1)
+	} else if strings.EqualFold(svcName, "inactive") {
+		c1 := metadata.Container{
+			PrimaryIp: "10.1.1.12",
 			State:     "running",
 		}
 		containers = append(containers, c1)
