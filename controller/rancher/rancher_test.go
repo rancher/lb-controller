@@ -270,7 +270,7 @@ func TestPriority(t *testing.T) {
 	if bes[0].Host != port4.Hostname {
 		t.Fatalf("Invalid order for the 1st element: [%v]", bes[0].UUID)
 	}
-	if bes[1].Host != "bar" {
+	if bes[1].Host != ".bar" {
 		t.Fatalf("Invalid order for the 2nd element: [%v]", bes[1].UUID)
 	}
 	if bes[2].Host != port0.Hostname {
@@ -317,7 +317,7 @@ func TestPriorityExtra(t *testing.T) {
 		t.Fatalf("Invalid backend length [%v]", len(bes))
 	}
 
-	if bes[0].Host != "fooff" {
+	if bes[0].Host != ".fooff" {
 		t.Fatalf("Invalid order for the 1st element: [%v]", bes[0].UUID)
 	}
 
@@ -339,7 +339,7 @@ func TestPriorityExtra(t *testing.T) {
 		t.Fatalf("Invalid backend length [%v]", len(bes))
 	}
 
-	if bes[0].Host != "fooff" {
+	if bes[0].Host != ".fooff" {
 		t.Fatalf("Invalid order for the 1st element: [%v]", bes[0].UUID)
 	}
 
