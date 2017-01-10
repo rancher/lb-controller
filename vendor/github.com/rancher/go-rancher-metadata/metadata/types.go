@@ -39,6 +39,7 @@ type Service struct {
 	PrimaryServiceName string                 `json:"primary_service_name"`
 	LBConfig           LBConfig               `json:"lb_config"`
 	EnvironmentUUID    string                 `json:"environment_uuid"`
+	State              string                 `json:"state"`
 }
 
 type Container struct {

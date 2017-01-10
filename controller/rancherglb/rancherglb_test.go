@@ -150,7 +150,47 @@ func TestTwoServicesMerge(t *testing.T) {
 			}
 		}
 	}
+}
 
+func TestInactiveLB(t *testing.T) {
+	var portRules []metadata.PortRule
+	portRule := metadata.PortRule{
+		SourcePort: 80,
+		Protocol:   "http",
+		Selector:   "inactive=true",
+	}
+	portRules = append(portRules, portRule)
+	lbConfig := metadata.LBConfig{
+		PortRules: portRules,
+	}
+
+	glbSvc := metadata.Service{
+		Kind:      "loadBalancerService",
+		LBConfig:  lbConfig,
+		Name:      "glb",
+		StackName: "glb",
+		UUID:      "glb",
+	}
+	configs, err := glb.GetGLBConfigs(glbSvc)
+	if err != nil {
+		t.Fatalf("Error getting configs: %s", err)
+	}
+
+	if len(configs) != 1 {
+		t.Fatalf("Incorrect number of configs, expected 1, actual: %v", len(configs))
+	}
+
+	fes := configs[0].FrontendServices
+	if len(fes) != 1 {
+		t.Fatalf("Incorrect number of frontends, expected 1, actual: %v", len(fes))
+	}
+
+	fe := fes[0]
+
+	bes := fe.BackendServices
+	if len(bes) != 1 {
+		t.Fatalf("Incorrect number of backends, expected 1, actual: %v", len(bes))
+	}
 }
 
 func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
@@ -188,6 +228,18 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 		return nil, err
 	}
 	svcs = append(svcs, *lbFooDup)
+
+	lbInactive, err := mf.GetService("", "lbinactive", "foo")
+	if err != nil {
+		return nil, err
+	}
+	svcs = append(svcs, *lbInactive)
+
+	lbActive, err := mf.GetService("", "lbactive", "foo")
+	if err != nil {
+		return nil, err
+	}
+	svcs = append(svcs, *lbActive)
 
 	return svcs, nil
 }
@@ -302,6 +354,58 @@ func (mf tMetaFetcher) GetService(envUUID string, svcName string, stackName stri
 			StackName:  "foo",
 		}
 		svc = &foo
+	} else if strings.EqualFold(svcName, "lbinactive") {
+		port := metadata.PortRule{
+			SourcePort: 80,
+			Path:       "/foo1",
+			Hostname:   "foo1.com",
+			Service:    "foo/foodup",
+			Protocol:   "http",
+			TargetPort: 103,
+		}
+		var portRules []metadata.PortRule
+		portRules = append(portRules, port)
+		lbConfig := metadata.LBConfig{
+			PortRules: portRules,
+		}
+		labels := make(map[string]string)
+		labels["inactive"] = "true"
+		lbfoodup := metadata.Service{
+			Kind:      "loadBalancerService",
+			LBConfig:  lbConfig,
+			Name:      "lbinactive",
+			UUID:      "lbinactive",
+			StackName: "foo",
+			Labels:    labels,
+			State:     "deactivating",
+		}
+		svc = &lbfoodup
+	} else if strings.EqualFold(svcName, "lbactive") {
+		port := metadata.PortRule{
+			SourcePort: 80,
+			Path:       "/foo2",
+			Hostname:   "foo2.com",
+			Service:    "foo/foodup",
+			Protocol:   "http",
+			TargetPort: 103,
+		}
+		var portRules []metadata.PortRule
+		portRules = append(portRules, port)
+		lbConfig := metadata.LBConfig{
+			PortRules: portRules,
+		}
+		labels := make(map[string]string)
+		labels["inactive"] = "true"
+		lbfoodup := metadata.Service{
+			Kind:      "loadBalancerService",
+			LBConfig:  lbConfig,
+			Name:      "lbactive",
+			UUID:      "lbactive",
+			StackName: "foo",
+			Labels:    labels,
+			State:     "active",
+		}
+		svc = &lbfoodup
 	}
 
 	return svc, nil
