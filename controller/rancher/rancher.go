@@ -205,7 +205,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 		if service == nil || !IsActiveService(service) {
 			continue
 		}
-		eps, err := lbc.getServiceEndpoints(service, rule.TargetPort, true, selfHostUUID, localServicePreference)
+		eps, err := lbc.getServiceEndpoints(service, rule.TargetPort, selfHostUUID, localServicePreference)
 		if err != nil {
 			return nil, err
 		}
@@ -508,18 +508,18 @@ func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName stri
 	return &service, nil
 }
 
-func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
+func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
 	var eps config.Endpoints
 	var err error
 	if strings.EqualFold(svc.Kind, "externalService") {
 		eps = lbc.getExternalServiceEndpoints(svc, targetPort)
 	} else if strings.EqualFold(svc.Kind, "dnsService") {
-		eps, err = lbc.getAliasServiceEndpoints(svc, targetPort, activeOnly, selfHostUUID, localServicePreference)
+		eps, err = lbc.getAliasServiceEndpoints(svc, targetPort, selfHostUUID, localServicePreference)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		eps = lbc.getRegularServiceEndpoints(svc, targetPort, activeOnly, selfHostUUID, localServicePreference)
+		eps = lbc.getRegularServiceEndpoints(svc, targetPort, selfHostUUID, localServicePreference)
 	}
 
 	// sort endpoints
@@ -527,7 +527,7 @@ func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, ta
 	return eps, nil
 }
 
-func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
+func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
 	var eps config.Endpoints
 	for link := range svc.Links {
 		svcName := strings.SplitN(link, "/", 2)
@@ -538,7 +538,7 @@ func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Servic
 		if service == nil {
 			continue
 		}
-		newEps, err := lbc.getServiceEndpoints(service, targetPort, activeOnly, selfHostUUID, localServicePreference)
+		newEps, err := lbc.getServiceEndpoints(service, targetPort, selfHostUUID, localServicePreference)
 		if err != nil {
 			return nil, err
 		}
@@ -570,7 +570,7 @@ func (lbc *LoadBalancerController) getExternalServiceEndpoints(svc *metadata.Ser
 	return eps
 }
 
-func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool, selfHostUUID, localServicePreference string) config.Endpoints {
+func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Service, targetPort int, selfHostUUID, localServicePreference string) config.Endpoints {
 	var eps config.Endpoints
 	var contingencyEps config.Endpoints
 	for _, c := range svc.Containers {
