@@ -161,7 +161,7 @@ func (lbc *glbController) GetGLBConfigs(glbSvc metadata.Service) ([]*config.Load
 			if err != nil {
 				return nil, err
 			}
-			cs, err := lbc.rancherController.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, lbMeta)
+			cs, err := lbc.rancherController.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, "", "", lbMeta)
 			if err != nil {
 				return nil, err
 			}

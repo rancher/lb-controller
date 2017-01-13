@@ -26,6 +26,7 @@ const (
 	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
 	lbSvcNameSeparator         string = "-rancherlb-"
 	rancherSchedulerPrefix     string = "io.rancher.scheduler."
+	rancherLabelPrefix         string = "io.rancher."
 )
 
 type LBProvider struct {
@@ -565,6 +566,10 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 		if strings.HasPrefix(k, rancherSchedulerPrefix) {
 			key := rancherSchedulerPrefix + strings.Replace(k[len(rancherSchedulerPrefix):], ".", ":", 1)
 			rancherLabels[key] = v
+			continue
+		}
+		if strings.HasPrefix(k, rancherLabelPrefix) {
+			rancherLabels[k] = v
 		}
 	}
 
