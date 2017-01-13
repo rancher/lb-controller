@@ -193,6 +193,10 @@ func TestInactiveLB(t *testing.T) {
 	}
 }
 
+func (mf tMetaFetcher) GetSelfHostUUID() (string, error) {
+	return "", nil
+}
+
 func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	var svcs []metadata.Service
 

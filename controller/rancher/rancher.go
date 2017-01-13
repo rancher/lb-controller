@@ -83,6 +83,7 @@ type MetadataFetcher interface {
 	GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error)
 	OnChange(intervalSeconds int, do func(string))
 	GetServices() ([]metadata.Service, error)
+	GetSelfHostUUID() (string, error)
 }
 
 type RMetaFetcher struct {
@@ -147,7 +148,7 @@ func (lbc *LoadBalancerController) Stop() error {
 	return fmt.Errorf("shutdown already in progress")
 }
 
-func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName string, envUUID string, lbMeta *LBMetadata) ([]*config.LoadBalancerConfig, error) {
+func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, selfHostUUID, localServicePreference string, lbMeta *LBMetadata) ([]*config.LoadBalancerConfig, error) {
 	lbConfigs := []*config.LoadBalancerConfig{}
 	if lbMeta == nil {
 		lbMeta = &LBMetadata{
@@ -208,7 +209,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName string, envUUI
 		if service == nil || !IsActiveService(service) {
 			continue
 		}
-		eps, err := lbc.getServiceEndpoints(service, rule.TargetPort, true)
+		eps, err := lbc.getServiceEndpoints(service, rule.TargetPort, true, selfHostUUID, localServicePreference)
 		if err != nil {
 			return nil, err
 		}
@@ -306,6 +307,14 @@ func (mf RMetaFetcher) GetSelfService() (metadata.Service, error) {
 	return mf.MetadataClient.GetSelfService()
 }
 
+func (mf RMetaFetcher) GetSelfHostUUID() (string, error) {
+	host, err := mf.MetadataClient.GetSelfHost()
+	if err != nil {
+		return "", err
+	}
+	return host.UUID, nil
+}
+
 func (lbc *LoadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig, error) {
 	lbSvc, err := lbc.MetaFetcher.GetSelfService()
 	if err != nil {
@@ -317,7 +326,21 @@ func (lbc *LoadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 		return nil, err
 	}
 
-	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, lbMeta)
+	selfHostUUID := ""
+	localServicePreference := "any"
+
+	if val, ok := lbSvc.Labels["io.rancher.lb_service.target"]; ok {
+		selfHostUUID, err = lbc.MetaFetcher.GetSelfHostUUID()
+		if err != nil {
+			return nil, err
+		}
+		localServicePreference = val
+		if val != "any" && val != "only-local" && val != "prefer-local" {
+			return nil, fmt.Errorf("Invalid label value for label io.rancher.lb_service.target=%s", val)
+		}
+	}
+
+	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, selfHostUUID, localServicePreference, lbMeta)
 }
 
 func (lbc *LoadBalancerController) CollectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
@@ -489,18 +512,18 @@ func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName stri
 	return &service, nil
 }
 
-func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
+func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
 	var eps config.Endpoints
 	var err error
 	if strings.EqualFold(svc.Kind, "externalService") {
 		eps = lbc.getExternalServiceEndpoints(svc, targetPort)
 	} else if strings.EqualFold(svc.Kind, "dnsService") {
-		eps, err = lbc.getAliasServiceEndpoints(svc, targetPort, activeOnly)
+		eps, err = lbc.getAliasServiceEndpoints(svc, targetPort, activeOnly, selfHostUUID, localServicePreference)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		eps = lbc.getRegularServiceEndpoints(svc, targetPort, activeOnly)
+		eps = lbc.getRegularServiceEndpoints(svc, targetPort, activeOnly, selfHostUUID, localServicePreference)
 	}
 
 	// sort endpoints
@@ -508,7 +531,7 @@ func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, ta
 	return eps, nil
 }
 
-func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) (config.Endpoints, error) {
+func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
 	var eps config.Endpoints
 	for link := range svc.Links {
 		svcName := strings.SplitN(link, "/", 2)
@@ -519,7 +542,7 @@ func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Servic
 		if service == nil {
 			continue
 		}
-		newEps, err := lbc.getServiceEndpoints(service, targetPort, activeOnly)
+		newEps, err := lbc.getServiceEndpoints(service, targetPort, activeOnly, selfHostUUID, localServicePreference)
 		if err != nil {
 			return nil, err
 		}
@@ -551,8 +574,9 @@ func (lbc *LoadBalancerController) getExternalServiceEndpoints(svc *metadata.Ser
 	return eps
 }
 
-func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool) config.Endpoints {
+func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Service, targetPort int, activeOnly bool, selfHostUUID, localServicePreference string) config.Endpoints {
 	var eps config.Endpoints
+	var contingencyEps config.Endpoints
 	for _, c := range svc.Containers {
 		if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
 			ep := &config.Endpoint{
@@ -560,8 +584,16 @@ func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Serv
 				IP:   c.PrimaryIp,
 				Port: targetPort,
 			}
+			if localServicePreference != "any" && !strings.EqualFold(c.HostUUID, selfHostUUID) {
+				contingencyEps = append(contingencyEps, ep)
+				continue
+			}
 			eps = append(eps, ep)
 		}
+	}
+
+	if localServicePreference == "prefer-local" && len(eps) == 0 {
+		return contingencyEps
 	}
 	return eps
 }
