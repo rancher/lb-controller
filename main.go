@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
@@ -13,6 +14,7 @@ import (
 var (
 	lbControllerName = flag.String("controller", "kubernetes", "Controller plugin name")
 	lbProviderName   = flag.String("provider", "haproxy", "Provider plugin name")
+	metadataAddress  = flag.String("metadata-address", "rancher-metadata", "Rancher metadata address")
 
 	lbc controller.LBController
 	lbp provider.LBProvider
@@ -44,7 +46,7 @@ func main() {
 
 	go startHealthcheck()
 
-	lbc.Run(lbp)
+	lbc.Run(lbp, fmt.Sprintf("http://%s/2015-12-19", *metadataAddress))
 }
 
 func handleSigterm(lbc controller.LBController, lbp provider.LBProvider) {

@@ -19,10 +19,6 @@ import (
 	"time"
 )
 
-const (
-	metadataURL = "http://rancher-metadata/2015-12-19"
-)
-
 func init() {
 	lbc, err := NewLoadBalancerController()
 	if err != nil {
@@ -103,7 +99,7 @@ func (lbc *LoadBalancerController) GetName() string {
 	return "rancher"
 }
 
-func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
+func (lbc *LoadBalancerController) Run(provider provider.LBProvider, metadataURL string) {
 	logrus.Infof("starting %s controller", lbc.GetName())
 	lbc.LBProvider = provider
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)

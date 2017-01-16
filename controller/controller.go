@@ -9,7 +9,7 @@ import (
 type LBController interface {
 	Init()
 	GetName() string
-	Run(lbProvider provider.LBProvider)
+	Run(lbProvider provider.LBProvider, metadataURL string)
 	Stop() error
 	GetLBConfigs() ([]*config.LoadBalancerConfig, error)
 	IsHealthy() bool
