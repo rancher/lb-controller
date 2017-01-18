@@ -4,7 +4,9 @@ type Stack struct {
 	EnvironmentName string    `json:"environment_name"`
 	EnvironmentUUID string    `json:"environment_uuid"`
 	Name            string    `json:"name"`
+	UUID            string    `json:"uuid"`
 	Services        []Service `json:"services"`
+	System          bool      `json:"system"`
 }
 
 type HealthCheck struct {

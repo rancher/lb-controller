@@ -8,15 +8,13 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-func (m *client) OnChange(intervalSeconds int, do func(string)) {
-	interval := time.Duration(intervalSeconds)
+func (m *client) OnChangeWithError(intervalSeconds int, do func(string)) error {
 	version := "init"
 
 	for {
 		newVersion, err := m.waitVersion(intervalSeconds, version)
 		if err != nil {
-			logrus.Errorf("Error reading metadata version: %v", err)
-			time.Sleep(interval * time.Second)
+			return err
 		} else if version == newVersion {
 			logrus.Debug("No changes in metadata version")
 		} else {
@@ -24,6 +22,18 @@ func (m *client) OnChange(intervalSeconds int, do func(string)) {
 			version = newVersion
 			do(newVersion)
 		}
+	}
+
+	return nil
+}
+
+func (m *client) OnChange(intervalSeconds int, do func(string)) {
+	interval := time.Duration(intervalSeconds)
+	for {
+		if err := m.OnChangeWithError(intervalSeconds, do); err != nil {
+			logrus.Errorf("Error reading metadata version: %v", err)
+		}
+		time.Sleep(interval * time.Second)
 	}
 }
 
