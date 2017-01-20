@@ -37,11 +37,21 @@ func (m *client) OnChange(intervalSeconds int, do func(string)) {
 	}
 }
 
+type timeout interface {
+	Timeout() bool
+}
+
 func (m *client) waitVersion(maxWait int, version string) (string, error) {
-	resp, err := m.SendRequest(fmt.Sprintf("/version?wait=true&value=%s&maxWait=%d", version, maxWait))
-	if err != nil {
-		return "", err
+	for {
+		resp, err := m.SendRequest(fmt.Sprintf("/version?wait=true&value=%s&maxWait=%d", version, maxWait))
+		if err != nil {
+			t, ok := err.(timeout)
+			if ok && t.Timeout() {
+				continue
+			}
+			return "", err
+		}
+		err = json.Unmarshal(resp, &version)
+		return version, err
 	}
-	err = json.Unmarshal(resp, &version)
-	return version, err
 }
