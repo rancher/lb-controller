@@ -18,10 +18,6 @@ import (
 	"time"
 )
 
-const (
-	metadataURL = "http://rancher-metadata/2015-12-19"
-)
-
 func init() {
 	lbc, err := newGLBController()
 	if err != nil {
@@ -333,7 +329,7 @@ func (lbc *glbController) mergeConfigs(glbSvc metadata.Service, configs []*confi
 	return merged, nil
 }
 
-func (lbc *glbController) Run(provider provider.LBProvider) {
+func (lbc *glbController) Run(provider provider.LBProvider, metadataURL string) {
 	logrus.Infof("starting %s controller", lbc.GetName())
 	lbc.lbProvider = provider
 	lbc.rancherController.LBProvider = provider

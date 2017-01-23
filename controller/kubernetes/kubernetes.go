@@ -327,7 +327,7 @@ func (lbc *loadBalancerController) getPublicEndpoints(key string) []string {
 }
 
 // Starts a load balancer controller
-func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
+func (lbc *loadBalancerController) Run(provider provider.LBProvider, metadataURL string) {
 	logrus.Infof("starting %s controller", lbc.GetName())
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
