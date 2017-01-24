@@ -74,11 +74,13 @@ type Container struct {
 }
 
 type Network struct {
-	Name      string                 `json:"name"`
-	UUID      string                 `json:"uuid"`
-	Metadata  map[string]interface{} `json:"metadata"`
-	HostPorts bool                   `json:"host_ports"`
-	Default   bool                   `json:"is_default"`
+	Name                string                 `json:"name"`
+	UUID                string                 `json:"uuid"`
+	Metadata            map[string]interface{} `json:"metadata"`
+	HostPorts           bool                   `json:"host_ports"`
+	Default             bool                   `json:"is_default"`
+	Policy              []NetworkPolicyRule    `json:"policy,omitempty"`
+	DefaultPolicyAction string                 `json:"default_policy_action"`
 }
 
 type Host struct {
@@ -122,4 +124,22 @@ type LBStickinessPolicy struct {
 	Nocache  bool   `json:"nocache"`
 	Postonly bool   `json:"postonly"`
 	Mode     string `json:"mode"`
+}
+
+type NetworkPolicyRuleBetween struct {
+	Selector string `yaml:"selector,omitempty"`
+	GroupBy  string `yaml:"groupBy,omitempty"`
+}
+
+type NetworkPolicyRuleMember struct {
+	Selector string `yaml:"selector,omitempty"`
+}
+
+type NetworkPolicyRule struct {
+	From    *NetworkPolicyRuleMember  `yaml:"from"`
+	To      *NetworkPolicyRuleMember  `yaml:"to"`
+	Ports   []string                  `yaml:"ports"`
+	Within  string                    `yaml:"within"`
+	Between *NetworkPolicyRuleBetween `yaml:"between"`
+	Action  string                    `yaml:"action"`
 }
