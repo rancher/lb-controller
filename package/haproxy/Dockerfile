@@ -9,9 +9,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     rsyslog \
     wget \
+    haproxy \
     software-properties-common && \
-    add-apt-repository ppa:vbernat/haproxy-1.6 && \
-    apt-get update && apt-get install -y haproxy && \
     rm -rf /var/lib/apt/lists
 
 RUN mkdir -p /etc/haproxy/
