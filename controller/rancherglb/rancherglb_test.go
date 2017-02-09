@@ -197,6 +197,10 @@ func (mf tMetaFetcher) GetSelfHostUUID() (string, error) {
 	return "", nil
 }
 
+func (mf tMetaFetcher) GetContainer(envUUID string, containerName string) (*metadata.Container, error) {
+	return nil, nil
+}
+
 func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	var svcs []metadata.Service
 

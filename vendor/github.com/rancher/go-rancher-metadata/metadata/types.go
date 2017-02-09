@@ -42,6 +42,7 @@ type Service struct {
 	LBConfig           LBConfig               `json:"lb_config"`
 	EnvironmentUUID    string                 `json:"environment_uuid"`
 	State              string                 `json:"state"`
+	System             bool                   `json:"system"`
 }
 
 type Container struct {
@@ -71,6 +72,7 @@ type Container struct {
 	Links                    map[string]string `json:"links"`
 	System                   bool              `json:"system"`
 	EnvironmentUUID          string            `json:"environment_uuid"`
+	HealthCheck              HealthCheck       `json:"health_check"`
 }
 
 type Network struct {
@@ -106,6 +108,7 @@ type PortRule struct {
 	Priority    int    `json:"priority"`
 	BackendName string `json:"backend_name"`
 	Selector    string `json:"selector"`
+	Container   string `json:"container"`
 }
 
 type LBConfig struct {
