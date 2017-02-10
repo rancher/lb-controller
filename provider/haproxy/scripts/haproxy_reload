@@ -4,19 +4,19 @@ set -e
 reload_haproxy(){
     # start rsyslog if not running 
     if [[ $(pgrep rsyslog | wc -l) != 1 ]]; then
-        rm -f /var/run/rsyslogd.pid
+        rm -f /run/rsyslogd.pid
         rsyslogd -f /etc/haproxy/rsyslogd.conf > /dev/null
     fi
 
-    if [ ! -f /var/run/haproxy.pid ] || [ $2 == "start" ]; then
-        if haproxy -p /var/run/haproxy.pid -f $1; then
+    if [ ! -f /run/haproxy.pid ] || [ $2 == "start" ]; then
+        if service haproxy start; then
             return 0
         else
             return 1
         fi
     fi
-    # restart service
-    if haproxy -p /var/run/haproxy.pid -f $1 -sf $(cat /var/run/haproxy.pid); then
+    # reload service
+    if service haproxy reload; then
         return 0
     else
         return 1
