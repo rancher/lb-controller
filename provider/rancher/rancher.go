@@ -22,11 +22,12 @@ type PublicEndpoint struct {
 }
 
 const (
-	controllerStackName        string = "kubernetes-ingress-lbs"
-	controllerExternalIDPrefix string = "kubernetes-ingress-lbs://"
-	lbSvcNameSeparator         string = "-rancherlb-"
-	rancherSchedulerPrefix     string = "io.rancher.scheduler."
-	rancherLabelPrefix         string = "io.rancher."
+	controllerStackName          string = "kubernetes-ingress-lbs"
+	controllerExternalIDPrefix   string = "kubernetes-ingress-lbs://"
+	lbSvcNameSeparator           string = "-rancherlb-"
+	rancherSchedulerPrefix       string = "io.rancher.scheduler."
+	rancherStickinessPolicyLabel string = "io.rancher.stickiness.policy"
+	rancherLabelPrefix           string = "io.rancher."
 )
 
 type LBProvider struct {
@@ -368,8 +369,23 @@ func (lbp *LBProvider) getRancherLbConfig(lbConfig *config.LoadBalancerConfig, l
 	}
 
 	updatedConfig.PortRules = portRules
-
+	updatedConfig.StickinessPolicy = convertProviderStickinessPolicyToRancherStickinessPolicy(lbConfig.StickinessPolicy)
 	return updatedConfig, nil
+}
+
+func convertProviderStickinessPolicyToRancherStickinessPolicy(lbConfig *config.StickinessPolicy) *client.LoadBalancerCookieStickinessPolicy {
+	if lbConfig == nil {
+		return nil
+	}
+	stickinessPolicy := &client.LoadBalancerCookieStickinessPolicy{}
+	stickinessPolicy.Cookie = lbConfig.Cookie
+	stickinessPolicy.Domain = lbConfig.Domain
+	stickinessPolicy.Name = lbConfig.Name
+	stickinessPolicy.Mode = lbConfig.Mode
+	stickinessPolicy.Indirect = lbConfig.Indirect
+	stickinessPolicy.Nocache = lbConfig.Nocache
+	stickinessPolicy.Postonly = lbConfig.Postonly
+	return stickinessPolicy
 }
 
 func (lbp *LBProvider) updateRancherLBService(lbConfig *config.LoadBalancerConfig, lb *client.LoadBalancerService) error {
@@ -409,6 +425,8 @@ func (lbp *LBProvider) updateRancherLBService(lbConfig *config.LoadBalancerConfi
 			}
 		}
 	}
+
+	update = update || stickinessPolicyChanged(lb.LbConfig, lbConfig)
 
 	if update {
 		toUpdate := make(map[string]interface{})
@@ -468,6 +486,49 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	fmtName = lbp.formatLBName(lbConfigName, true)
 	logrus.Debugf("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
+}
+
+func stickinessPolicyChanged(oldLbConfig *client.LbConfig, newLbConfig *config.LoadBalancerConfig) bool {
+	oldStickyPolicy := oldLbConfig.StickinessPolicy
+	newStickyPolicy := newLbConfig.StickinessPolicy
+	if oldStickyPolicy == nil {
+		if newStickyPolicy != nil {
+			return true
+		}
+		return false
+	}
+	if newStickyPolicy == nil {
+		if oldStickyPolicy != nil {
+			return true
+		}
+		return false
+	}
+	if oldStickyPolicy.Name != newStickyPolicy.Name {
+		return true
+	}
+	if oldStickyPolicy.Cookie != newStickyPolicy.Cookie {
+		return true
+	}
+	if oldStickyPolicy.Domain != newStickyPolicy.Domain {
+		return true
+	}
+	newMode := newStickyPolicy.Mode
+	if newMode == "" {
+		newMode = "insert"
+	}
+	if oldStickyPolicy.Mode != newMode {
+		return true
+	}
+	if oldStickyPolicy.Indirect != newStickyPolicy.Indirect {
+		return true
+	}
+	if oldStickyPolicy.Nocache != newStickyPolicy.Nocache {
+		return true
+	}
+	if oldStickyPolicy.Postonly != newStickyPolicy.Postonly {
+		return true
+	}
+	return false
 }
 
 func schedulerLabelsChanged(oldLabels map[string]interface{}, newLabels map[string]string) bool {
@@ -568,10 +629,15 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 			rancherLabels[key] = v
 			continue
 		}
+		if strings.HasPrefix(k, rancherStickinessPolicyLabel) {
+			continue
+		}
 		if strings.HasPrefix(k, rancherLabelPrefix) {
 			rancherLabels[k] = v
 		}
 	}
+
+	stickinessPolicy := convertProviderStickinessPolicyToRancherStickinessPolicy(lbConfig.StickinessPolicy)
 
 	name := lbp.formatLBName(lbConfig.Name, false)
 	lb = &client.LoadBalancerService{
@@ -583,8 +649,10 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 			Labels:    rancherLabels,
 		},
 		ExternalId: fmt.Sprintf("%v%v", controllerExternalIDPrefix, name),
-		LbConfig:   &client.LbConfig{},
-		Scale:      int64(scale),
+		LbConfig: &client.LbConfig{
+			StickinessPolicy: stickinessPolicy,
+		},
+		Scale: int64(scale),
 	}
 
 	lb, err = lbp.client.LoadBalancerService.Create(lb)

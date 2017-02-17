@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,8 @@ var (
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
 )
+
+const rancherStickinessPolicyLabel = "io.rancher.stickiness.policy"
 
 func init() {
 	var server string
@@ -438,12 +441,48 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			frontEndServices = append(frontEndServices, frontEndHTTPSService)
 		}
 
+		stickinessPolicyString := params[rancherStickinessPolicyLabel]
+
+		var stickinessPolicy *config.StickinessPolicy
+		if stickinessPolicyString != "" {
+			stickinessPolicy = &config.StickinessPolicy{}
+			stickinessParams := strings.Split(stickinessPolicyString, "\n")
+			for _, param := range stickinessParams {
+				individualParam := strings.Split(strings.TrimSpace(param), ":")
+				if len(individualParam) != 2 {
+					return nil, fmt.Errorf("invalid param %s in lb stickinesspolicy, expected colon separated Key Value pair", param)
+				}
+				switch strings.TrimSpace(individualParam[0]) {
+				case "cookie":
+					stickinessPolicy.Cookie = strings.TrimSpace(individualParam[1])
+				case "domain":
+					stickinessPolicy.Domain = strings.TrimSpace(individualParam[1])
+				case "name":
+					stickinessPolicy.Name = strings.TrimSpace(individualParam[1])
+				case "mode":
+					stickinessPolicy.Mode = strings.TrimSpace(individualParam[1])
+				case "indirect":
+					val := strings.TrimSpace(individualParam[1])
+					stickinessPolicy.Indirect = strings.EqualFold(val, "true")
+				case "nocache":
+					val := strings.TrimSpace(individualParam[1])
+					stickinessPolicy.Nocache = strings.EqualFold(val, "true")
+				case "postonly":
+					val := strings.TrimSpace(individualParam[1])
+					stickinessPolicy.Postonly = strings.EqualFold(val, "true")
+				default:
+					return nil, fmt.Errorf("Unknown stickiness policy param %s: %s", individualParam[0], individualParam[1])
+				}
+			}
+		}
+
 		lbConfig := &config.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
 			FrontendServices: frontEndServices,
 			Config:           params["config"],
 			DefaultCert:      cert,
 			Annotations:      params,
+			StickinessPolicy: stickinessPolicy,
 		}
 		lbConfigs = append(lbConfigs, lbConfig)
 	}
