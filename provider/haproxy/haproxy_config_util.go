@@ -24,6 +24,7 @@ func GetDefaultConfig() map[string]map[string]string {
 	global["user haproxy"] = ""
 	global["group haproxy"] = ""
 	global["daemon"] = ""
+	global["log"] = "/dev/log local0"
 
 	defaults["mode"] = "tcp"
 	defaults["option redispatch"] = ""
