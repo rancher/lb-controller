@@ -544,6 +544,10 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return svcs, nil
 }
 
+func (mf tMetaFetcher) GetContainer(envUUID string, containerName string) (*metadata.Container, error) {
+	return nil, nil
+}
+
 func (mf tMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {
 	var svc *metadata.Service
 	if strings.EqualFold(svcName, "foo") {

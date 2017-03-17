@@ -80,6 +80,7 @@ type MetadataFetcher interface {
 	OnChange(intervalSeconds int, do func(string))
 	GetServices() ([]metadata.Service, error)
 	GetSelfHostUUID() (string, error)
+	GetContainer(envUUID string, instanceName string) (*metadata.Container, error)
 }
 
 type RMetaFetcher struct {
@@ -195,24 +196,43 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 				BackendServices: backends,
 			}
 		}
-		// service comes in a format of stackName/serviceName,
-		// replace "/"" with "_"
-		svcName := strings.SplitN(rule.Service, "/", 2)
-		service, err := lbc.MetaFetcher.GetService(envUUID, svcName[1], svcName[0])
-		if err != nil {
-			return nil, err
-		}
-		if service == nil || !IsActiveService(service) {
-			continue
-		}
-		eps, err := lbc.getServiceEndpoints(service, rule.TargetPort, selfHostUUID, localServicePreference)
-		if err != nil {
-			return nil, err
-		}
 
-		hc, err := getServiceHealthCheck(service)
-		if err != nil {
-			return nil, err
+		var eps config.Endpoints
+		var hc *config.HealthCheck
+		if rule.Service != "" {
+			// service comes in a format of stackName/serviceName,
+			// replace "/"" with "_"
+			svcName := strings.SplitN(rule.Service, "/", 2)
+			service, err := lbc.MetaFetcher.GetService(envUUID, svcName[1], svcName[0])
+			if err != nil {
+				return nil, err
+			}
+			if service == nil || !IsActiveService(service) {
+				continue
+			}
+			eps, err = lbc.getServiceEndpoints(service, rule.TargetPort, selfHostUUID, localServicePreference)
+			if err != nil {
+				return nil, err
+			}
+
+			hc, err = getServiceHealthCheck(service)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			container, err := lbc.MetaFetcher.GetContainer(envUUID, rule.Container)
+			if err != nil {
+				return nil, err
+			}
+			ep, _ := getContainerEndpoint(container, rule.TargetPort, selfHostUUID, localServicePreference)
+			if ep == nil {
+				continue
+			}
+			eps = append(eps, ep)
+			hc, err = getContainerHealthcheck(container)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		comparator := config.EqRuleComparator
@@ -475,6 +495,13 @@ func getServiceHealthCheck(svc *metadata.Service) (*config.HealthCheck, error) {
 	return getConfigServiceHealthCheck(svc.HealthCheck)
 }
 
+func getContainerHealthcheck(c *metadata.Container) (*config.HealthCheck, error) {
+	if &c.HealthCheck == nil {
+		return nil, nil
+	}
+	return getConfigServiceHealthCheck(c.HealthCheck)
+}
+
 func (mf RMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return mf.MetadataClient.GetServices()
 }
@@ -506,6 +533,25 @@ func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName stri
 		}
 	}
 	return &service, nil
+}
+
+func (mf RMetaFetcher) GetContainer(envUUID string, containerName string) (*metadata.Container, error) {
+	cs, err := mf.MetadataClient.GetContainers()
+	if err != nil {
+		return nil, err
+	}
+	var container metadata.Container
+	for _, c := range cs {
+		//only consider containers from the same environment
+		if !strings.EqualFold(c.EnvironmentUUID, envUUID) {
+			continue
+		}
+		if strings.EqualFold(c.Name, containerName) {
+			container = c
+			break
+		}
+	}
+	return &container, nil
 }
 
 func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, targetPort int, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
@@ -574,24 +620,36 @@ func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Serv
 	var eps config.Endpoints
 	var contingencyEps config.Endpoints
 	for _, c := range svc.Containers {
-		if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
-			ep := &config.Endpoint{
-				Name: hashIP(c.PrimaryIp),
-				IP:   c.PrimaryIp,
-				Port: targetPort,
-			}
-			if localServicePreference != "any" && !strings.EqualFold(c.HostUUID, selfHostUUID) {
-				contingencyEps = append(contingencyEps, ep)
-				continue
-			}
-			eps = append(eps, ep)
+		ep, isContigency := getContainerEndpoint(&c, targetPort, selfHostUUID, localServicePreference)
+		if ep == nil {
+			continue
 		}
+		if isContigency {
+			contingencyEps = append(contingencyEps, ep)
+			continue
+		}
+		eps = append(eps, ep)
 	}
 
 	if localServicePreference == "prefer-local" && len(eps) == 0 {
 		return contingencyEps
 	}
 	return eps
+}
+
+func getContainerEndpoint(c *metadata.Container, targetPort int, selfHostUUID string, localServicePreference string) (*config.Endpoint, bool) {
+	if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
+		ep := &config.Endpoint{
+			Name: hashIP(c.PrimaryIp),
+			IP:   c.PrimaryIp,
+			Port: targetPort,
+		}
+		if localServicePreference != "any" && !strings.EqualFold(c.HostUUID, selfHostUUID) {
+			return ep, true
+		}
+		return ep, false
+	}
+	return nil, false
 }
 
 func (lbc *LoadBalancerController) IsHealthy() bool {
