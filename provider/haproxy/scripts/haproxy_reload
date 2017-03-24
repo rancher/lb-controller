@@ -28,6 +28,7 @@ apply_config()
     # apply new config
     if [ $2 == "start" ]; then
         echo "starting haproxy"
+        reload_haproxy $1 $2
     elif ! cmp -s $1 /etc/haproxy/haproxy_new.cfg  ; then
         echo "reloading haproxy config with the new config changes"
         reapply $1 $2
