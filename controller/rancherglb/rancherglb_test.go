@@ -484,6 +484,21 @@ func (cf tCertFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.Pub
 	return nil
 }
 
+func (cf tCertFetcher) ReadAllCertificatesFromDir(certDir string) ([]*config.Certificate, error) {
+	return nil, nil
+}
+
+func (cf tCertFetcher) ReadDefaultCertificate(defaultCertDir string) (*config.Certificate, error) {
+	return nil, nil
+}
+
+func (cf tCertFetcher) StopWatcher() error {
+	return nil
+}
+
+func (cf tCertFetcher) ProcessFileUpdateEvents(do func(string)) {
+}
+
 func (p *tProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 	return nil
 }

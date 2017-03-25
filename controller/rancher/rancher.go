@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/fsnotify/fsnotify"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -55,8 +57,15 @@ func (lbc *LoadBalancerController) Init() {
 		logrus.Fatalf("Failed to create Rancher client %v", err)
 	}
 
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		logrus.Fatalf("Error initializing the dir watcher %v", err)
+	}
+
 	certFetcher := &RCertificateFetcher{
-		Client: client,
+		Client:  client,
+		mu:      &sync.RWMutex{},
+		Watcher: w,
 	}
 
 	lbc.CertFetcher = certFetcher
@@ -87,15 +96,6 @@ type RMetaFetcher struct {
 	MetadataClient metadata.Client
 }
 
-type CertificateFetcher interface {
-	FetchCertificate(certName string) (*config.Certificate, error)
-	UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error
-}
-
-type RCertificateFetcher struct {
-	Client *client.RancherClient
-}
-
 func (lbc *LoadBalancerController) GetName() string {
 	return "rancher"
 }
@@ -103,6 +103,8 @@ func (lbc *LoadBalancerController) GetName() string {
 func (lbc *LoadBalancerController) Run(provider provider.LBProvider, metadataURL string) {
 	logrus.Infof("starting %s controller", lbc.GetName())
 	lbc.LBProvider = provider
+	go lbc.CertFetcher.ProcessFileUpdateEvents(lbc.ScheduleApplyConfig)
+
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 
 	go lbc.LBProvider.Run(nil)
@@ -118,7 +120,6 @@ func (lbc *LoadBalancerController) Run(provider provider.LBProvider, metadataURL
 	}
 
 	lbc.MetaFetcher.OnChange(5, lbc.ScheduleApplyConfig)
-
 	<-lbc.stopCh
 }
 
@@ -138,6 +139,12 @@ func (lbc *LoadBalancerController) Stop() error {
 		if err := lbc.LBProvider.Stop(); err != nil {
 			return err
 		}
+
+		//stop any file watcher
+		if err := lbc.CertFetcher.StopWatcher(); err != nil {
+			logrus.Infof("Error closing File Watcher %v", err)
+		}
+
 		close(lbc.stopCh)
 		lbc.shutdown = true
 	}
@@ -145,7 +152,7 @@ func (lbc *LoadBalancerController) Stop() error {
 	return fmt.Errorf("shutdown already in progress")
 }
 
-func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, selfHostUUID, localServicePreference string, lbMeta *LBMetadata) ([]*config.LoadBalancerConfig, error) {
+func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, selfHostUUID, localServicePreference string, lbMeta *LBMetadata, lbLabels map[string]string) ([]*config.LoadBalancerConfig, error) {
 	lbConfigs := []*config.LoadBalancerConfig{}
 	if lbMeta == nil {
 		lbMeta = &LBMetadata{
@@ -156,23 +163,53 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 		}
 	}
 	frontendsMap := map[string]*config.FrontendService{}
-	// fetch certificates
+
+	// fetch certificates either from mounted certDir or from the cattle
 	certs := []*config.Certificate{}
-	for _, certName := range lbMeta.Certs {
-		cert, err := lbc.CertFetcher.FetchCertificate(certName)
+	var defaultCert *config.Certificate
+
+	certDir, certDirSet := lbLabels["io.rancher.lb_service.cert_dir"]
+	defaultCertDir, defaultCertDirSet := lbLabels["io.rancher.lb_service.default_cert_dir"]
+	if certDirSet || defaultCertDirSet {
+		if defaultCertDirSet {
+			logrus.Debugf("Found defaultCertDir label %v", defaultCertDir)
+			var err error
+			defaultCert, err = lbc.CertFetcher.ReadDefaultCertificate(defaultCertDir)
+			if err != nil {
+				return nil, err
+			}
+			if defaultCert != nil {
+				certs = append(certs, defaultCert)
+			}
+		}
+		//read all the certificates from the mounted certDir
+		if certDirSet {
+			logrus.Debugf("Found certDir label %v", certDir)
+			certsFromDir, err := lbc.CertFetcher.ReadAllCertificatesFromDir(certDir)
+			if err != nil {
+				return nil, err
+			}
+			certs = append(certs, certsFromDir...)
+		}
+	} else {
+		for _, certName := range lbMeta.Certs {
+			cert, err := lbc.CertFetcher.FetchCertificate(certName)
+			if err != nil {
+				return nil, err
+			}
+			certs = append(certs, cert)
+		}
+		var err error
+		defaultCert, err = lbc.CertFetcher.FetchCertificate(lbMeta.DefaultCert)
 		if err != nil {
 			return nil, err
 		}
-		certs = append(certs, cert)
-	}
-	defaultCert, err := lbc.CertFetcher.FetchCertificate(lbMeta.DefaultCert)
-	if err != nil {
-		return nil, err
+
+		if defaultCert != nil {
+			certs = append(certs, defaultCert)
+		}
 	}
 
-	if defaultCert != nil {
-		certs = append(certs, defaultCert)
-	}
 	allBe := make(map[string]*config.BackendService)
 	allEps := make(map[string]map[string]string)
 	reg, err := regexp.Compile("[^A-Za-z0-9]+")
@@ -310,6 +347,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 		StickinessPolicy: &lbMeta.StickinessPolicy,
 	}
 
+	//Q: What does ProcessCustomConfig do?
 	if err = lbc.LBProvider.ProcessCustomConfig(lbConfig, lbMeta.Config); err != nil {
 		return nil, err
 	}
@@ -356,7 +394,8 @@ func (lbc *LoadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 		}
 	}
 
-	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, selfHostUUID, localServicePreference, lbMeta)
+	logrus.Debugf("lbSvc Labels: %v", lbSvc.Labels)
+	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, selfHostUUID, localServicePreference, lbMeta, lbSvc.Labels)
 }
 
 func (lbc *LoadBalancerController) CollectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
@@ -437,54 +476,6 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	}
 
 	lbMeta.PortRules = rules
-	return nil
-}
-
-func (fetcher *RCertificateFetcher) FetchCertificate(certName string) (*config.Certificate, error) {
-	if certName == "" {
-		return nil, nil
-	}
-	opts := client.NewListOpts()
-	opts.Filters["name"] = certName
-	opts.Filters["removed_null"] = "1"
-
-	certs, err := fetcher.Client.Certificate.List(opts)
-	if err != nil {
-		return nil, fmt.Errorf("Coudln't get certificate by name [%s]. Error: %#v", certName, err)
-	}
-	var cert client.Certificate
-	var certWithChain string
-	if len(certs.Data) >= 1 {
-		cert = certs.Data[0]
-		certWithChain = fmt.Sprintf("%s\n%s", cert.Cert, cert.CertChain)
-	}
-	return &config.Certificate{
-		Name: cert.Name,
-		Key:  cert.Key,
-		Cert: certWithChain,
-	}, nil
-}
-
-func (fetcher *RCertificateFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error {
-	opts := client.NewListOpts()
-	opts.Filters["uuid"] = lbSvc.UUID
-	opts.Filters["removed_null"] = "1"
-	lbs, err := fetcher.Client.LoadBalancerService.List(opts)
-	if err != nil {
-		return fmt.Errorf("Coudln't get LB service by uuid [%s]. Error: %#v", lbSvc.UUID, err)
-	}
-	if len(lbs.Data) == 0 {
-		logrus.Infof("Failed to find lb by uuid %s", lbSvc.UUID)
-		return nil
-	}
-	lb := lbs.Data[0]
-
-	toUpdate := make(map[string]interface{})
-	toUpdate["publicEndpoints"] = eps
-	logrus.Infof("Updating Rancher LB [%s] in stack [%s] with the new public endpoints [%v] ", lbSvc.Name, lbSvc.StackName, eps)
-	if _, err := fetcher.Client.LoadBalancerService.Update(&lb, toUpdate); err != nil {
-		return fmt.Errorf("Failed to update Rancher LB [%s] in stack [%s]. Error: %#v", lbSvc.Name, lbSvc.StackName, err)
-	}
 	return nil
 }
 
