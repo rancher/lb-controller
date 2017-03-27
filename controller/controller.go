@@ -7,9 +7,9 @@ import (
 )
 
 type LBController interface {
-	Init()
+	Init(metadataURL string)
 	GetName() string
-	Run(lbProvider provider.LBProvider, metadataURL string)
+	Run(lbProvider provider.LBProvider)
 	Stop() error
 	GetLBConfigs() ([]*config.LoadBalancerConfig, error)
 	IsHealthy() bool
@@ -19,9 +19,9 @@ var (
 	controllers map[string]LBController
 )
 
-func GetController(name string) LBController {
+func GetController(name string, metadataURL string) LBController {
 	if controller, ok := controllers[name]; ok {
-		controller.Init()
+		controller.Init(metadataURL)
 		return controller
 	}
 	return controllers["kubernetes"]

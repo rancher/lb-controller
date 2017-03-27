@@ -46,7 +46,7 @@ func TestTCPRuleFields(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	be := configs[0].FrontendServices[0].BackendServices[0]
 	if be.Host != "" {
@@ -78,7 +78,7 @@ func TestTwoRunningServices(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 3 {
@@ -108,7 +108,7 @@ func TestTwoSourcePorts(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	fes := configs[0].FrontendServices
 	if len(fes) != 2 {
@@ -144,7 +144,7 @@ func TestOneSourcePortTwoRules(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	fes := configs[0].FrontendServices
 	if len(fes) != 1 {
@@ -171,7 +171,7 @@ func TestPreferLocalService(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "3", "prefer-local", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "3", "prefer-local", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 2 {
@@ -193,7 +193,7 @@ func TestLocalService(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "1", "only-local", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "1", "only-local", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 1 {
@@ -222,7 +222,7 @@ func TestStoppedAndRunningInstance(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 1 {
@@ -243,7 +243,7 @@ func TestStoppedInstance(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 0 {
@@ -271,7 +271,7 @@ func TestInactiveService(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	fe := configs[0].FrontendServices[0]
 	bes := fe.BackendServices
@@ -333,7 +333,7 @@ func TestPriority(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	bes := configs[0].FrontendServices[0].BackendServices
 	if len(bes) != 5 {
@@ -383,7 +383,7 @@ func TestPriorityExtra(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	bes := configs[0].FrontendServices[0].BackendServices
 	if len(bes) != 2 {
@@ -406,7 +406,7 @@ func TestPriorityExtra(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ = lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ = lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 	bes = configs[0].FrontendServices[0].BackendServices
 	if len(bes) != 2 {
 		t.Fatalf("Invalid backend length [%v]", len(bes))
@@ -437,7 +437,7 @@ func TestRuleFields(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, err := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, err := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 	if err != nil {
 		t.Fatalf("Failed to build the config from metadata %v", err)
 	}
@@ -694,7 +694,7 @@ func TestExternalCname(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	eps := configs[0].FrontendServices[0].BackendServices[0].Endpoints
 	if len(eps) != 1 {
@@ -722,6 +722,10 @@ func (mf tMetaFetcher) GetSelfHostUUID() (string, error) {
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 }
 
+func (cf tCertFetcher) FetchCertificates(lbMeta *LBMetadata, isDefaultCert bool) ([]*config.Certificate, error) {
+	return nil, nil
+}
+
 func (cf tCertFetcher) FetchCertificate(certName string) (*config.Certificate, error) {
 	return nil, nil
 }
@@ -730,22 +734,15 @@ func (cf tCertFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.Pub
 	return nil
 }
 
-func (cf tCertFetcher) ReadAllCertificatesFromDir(certDir string) ([]*config.Certificate, error) {
-	return nil, nil
-}
-
-func (cf tCertFetcher) ReadDefaultCertificate(defaultCertDir string) (*config.Certificate, error) {
-	return nil, nil
-}
-
-func (cf tCertFetcher) ProcessFileUpdateEvents(do func(string)) {
-}
-
-func (cf tCertFetcher) StopWatcher() error {
+func (cf tCertFetcher) ReadAllCertificatesFromDir(certDir string) []*config.Certificate {
 	return nil
 }
 
-func (cf tCertFetcher) ProcessEvents() {
+func (cf tCertFetcher) ReadDefaultCertificate(defaultCertDir string) *config.Certificate {
+	return nil
+}
+
+func (cf tCertFetcher) LookForCertUpdates(do func(string)) {
 }
 
 func (p *tProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
@@ -792,7 +789,7 @@ func TestSelectorNoMatch(t *testing.T) {
 
 	lbc.processSelector(meta)
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	if len(configs[0].FrontendServices) != 0 {
 		t.Fatalf("Incorrect number of frontend services %v", len(configs[0].FrontendServices))
@@ -813,7 +810,7 @@ func TestSelectorMatch(t *testing.T) {
 
 	lbc.processSelector(meta)
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	fe := configs[0].FrontendServices[0]
 	if len(fe.BackendServices) == 0 {
@@ -864,7 +861,7 @@ func TestSelectorMatchNoTargetPort(t *testing.T) {
 
 	lbc.processSelector(meta)
 
-	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta, nil)
+	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
 	if len(configs[0].FrontendServices) == 0 {
 		t.Fatal("No frontends are configured for selector based service")

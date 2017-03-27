@@ -1,7 +1,6 @@
 package rancher
 
 import (
-	"github.com/fsnotify/fsnotify"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -20,57 +19,55 @@ func init() {
 		MetaFetcher:                tMetaFetcher{},
 		LBProvider:                 &tProvider{},
 	}
-	w, _ := fsnotify.NewWatcher()
 
 	certFetcher := &RCertificateFetcher{
-		mu:      &sync.RWMutex{},
-		Watcher: w,
+		mu:                  &sync.RWMutex{},
+		updateCheckInterval: 5,
+		forceUpdateInterval: 15,
+		CertDir:             "testcerts/certs",
+		DefaultCertDir:      "testcerts/defaultCert",
+		CertName:            "fullchain.pem",
+		KeyName:             "privkey.pem",
+		initPollMu:          &sync.RWMutex{},
 	}
 	testlbc.CertFetcher = certFetcher
 
-	go testlbc.CertFetcher.ProcessFileUpdateEvents(func(string) {})
+	go testlbc.CertFetcher.LookForCertUpdates(func(string) {})
+
+	time.Sleep(10 * time.Second)
 }
 
-func TestReadCertDir(t *testing.T) {
-	labels := make(map[string]string)
-	labels["io.rancher.lb_service.cert_dir"] = "./testcerts/certs"
+func TestReadCertDirs(t *testing.T) {
+	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
 
-	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil, labels)
-	if err != nil {
-		t.Fatalf("Error building config %v", err)
-	}
-
-	if len(configs[0].Certs) != 2 {
-		t.Fatalf("Failed to read the certificates from directory %v", labels)
-	}
-}
-
-func TestReadDefaultCertDir(t *testing.T) {
-	labels := make(map[string]string)
-	labels["io.rancher.lb_service.default_cert_dir"] = "./testcerts/defaultCert"
-
-	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil, labels)
-	if err != nil {
-		t.Fatalf("Error building config %v", err)
-	}
-
-	if configs[0].DefaultCert == nil {
-		t.Fatalf("Failed to read the default certificate from directory %v", labels)
-	}
-}
-
-func TestCheckCertDirUpdate(t *testing.T) {
-	labels := make(map[string]string)
-	labels["io.rancher.lb_service.cert_dir"] = "testcerts/certs"
-	labels["io.rancher.lb_service.default_cert_dir"] = "testcerts/defaultCert"
-
-	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil, labels)
 	if err != nil {
 		t.Fatalf("Error building config %v", err)
 	}
 
 	if len(configs[0].Certs) != 3 {
-		t.Fatalf("Failed to read the certificates from directory %v", labels)
+		t.Fatalf("Failed to read the certificates from the directory")
+	}
+}
+
+func TestReadDefaultCertDir(t *testing.T) {
+	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
+	if err != nil {
+		t.Fatalf("Error building config %v", err)
+	}
+
+	if configs[0].DefaultCert == nil {
+		t.Fatalf("Failed to read the default certificate from the directory")
+	}
+}
+
+func TestCheckCertDirUpdate(t *testing.T) {
+	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
+	if err != nil {
+		t.Fatalf("Error building config %v", err)
+	}
+
+	if len(configs[0].Certs) != 3 {
+		t.Fatalf("Failed to read the certificates from the directory")
 	}
 
 	path := filepath.Join("./testcerts/certs", "c.com")
@@ -85,12 +82,12 @@ func TestCheckCertDirUpdate(t *testing.T) {
 
 	time.Sleep(10 * time.Second)
 
-	newConfigs, err2 := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil, labels)
+	newConfigs, err2 := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
 	if err2 != nil {
 		t.Fatalf("Error building config %v", err)
 	}
 
 	if len(newConfigs[0].Certs) != 4 {
-		t.Fatalf("Failed to read the Updated certificates from directory %v", configs[0].Certs)
+		t.Fatalf("Failed to read the Updated certificates from the directory")
 	}
 }
