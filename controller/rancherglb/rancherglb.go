@@ -27,8 +27,21 @@ func init() {
 	controller.RegisterController(lbc.GetName(), lbc)
 }
 
-func (lbc *glbController) Init() {
-	lbc.rancherController.Init()
+func (lbc *glbController) Init(metadataURL string) {
+	lbc.rancherController.Init(metadataURL)
+
+	metadataClient, err := metadata.NewClientAndWait(metadataURL)
+	if err != nil {
+		logrus.Fatalf("Error initiating metadata client: %v", err)
+	}
+
+	lbc.metaFetcher = rancher.RMetaFetcher{
+		MetadataClient: metadataClient,
+	}
+
+	lbc.rancherController.MetaFetcher = rancher.RMetaFetcher{
+		MetadataClient: metadataClient,
+	}
 }
 
 type glbController struct {
@@ -296,25 +309,24 @@ func (lbc *glbController) mergeConfigs(glbSvc metadata.Service, configs []*confi
 		return nil, err
 	}
 	certs := []*config.Certificate{}
-	for _, certName := range glbMeta.Certs {
-		cert, err := lbc.rancherController.CertFetcher.FetchCertificate(certName)
-		if err != nil {
-			return nil, err
-		}
-		certs = append(certs, cert)
-	}
-
 	var defaultCert *config.Certificate
-	if glbMeta.DefaultCert != "" {
-		defaultCert, err = lbc.rancherController.CertFetcher.FetchCertificate(glbMeta.DefaultCert)
-		if err != nil {
-			return nil, err
-		}
 
+	defCerts, err := lbc.rancherController.CertFetcher.FetchCertificates(glbMeta, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(defCerts) > 0 {
+		defaultCert = defCerts[0]
 		if defaultCert != nil {
 			certs = append(certs, defaultCert)
 		}
 	}
+
+	alternateCerts, err := lbc.rancherController.CertFetcher.FetchCertificates(glbMeta, false)
+	if err != nil {
+		return nil, err
+	}
+	certs = append(certs, alternateCerts...)
 
 	lbConfig := &config.LoadBalancerConfig{
 		Name:             glbSvc.Name,
@@ -329,27 +341,13 @@ func (lbc *glbController) mergeConfigs(glbSvc metadata.Service, configs []*confi
 	return merged, nil
 }
 
-func (lbc *glbController) Run(provider provider.LBProvider, metadataURL string) {
+func (lbc *glbController) Run(provider provider.LBProvider) {
 	logrus.Infof("starting %s controller", lbc.GetName())
 	lbc.lbProvider = provider
 	lbc.rancherController.LBProvider = provider
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 
 	go lbc.lbProvider.Run(nil)
-
-	metadataClient, err := metadata.NewClientAndWait(metadataURL)
-	if err != nil {
-		logrus.Errorf("Error initiating metadata client: %v", err)
-		lbc.Stop()
-	}
-
-	lbc.metaFetcher = rancher.RMetaFetcher{
-		MetadataClient: metadataClient,
-	}
-
-	lbc.rancherController.MetaFetcher = rancher.RMetaFetcher{
-		MetadataClient: metadataClient,
-	}
 
 	lbc.metaFetcher.OnChange(5, lbc.ScheduleApplyConfig)
 

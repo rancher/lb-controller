@@ -473,7 +473,35 @@ func (mf tMetaFetcher) GetSelfService() (metadata.Service, error) {
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 }
 
-func (cf tCertFetcher) FetchCertificate(certName string) (*config.Certificate, error) {
+func (cf tCertFetcher) FetchCertificates(lbMeta *rancher.LBMetadata, isDefaultCert bool) ([]*config.Certificate, error) {
+	certs := []*config.Certificate{}
+	var defaultCert *config.Certificate
+
+	if !isDefaultCert {
+		for _, certName := range lbMeta.Certs {
+			cert, err := cf.FetchRancherCertificate(certName)
+			if err != nil {
+				return nil, err
+			}
+			certs = append(certs, cert)
+		}
+	} else {
+		if lbMeta.DefaultCert != "" {
+			var err error
+			defaultCert, err = cf.FetchRancherCertificate(lbMeta.DefaultCert)
+			if err != nil {
+				return nil, err
+			}
+
+			if defaultCert != nil {
+				certs = append(certs, defaultCert)
+			}
+		}
+	}
+	return certs, nil
+}
+
+func (cf tCertFetcher) FetchRancherCertificate(certName string) (*config.Certificate, error) {
 	if certName == "" {
 		return nil, nil
 	}
@@ -482,6 +510,17 @@ func (cf tCertFetcher) FetchCertificate(certName string) (*config.Certificate, e
 
 func (cf tCertFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error {
 	return nil
+}
+
+func (cf tCertFetcher) ReadAllCertificatesFromDir(certDir string) []*config.Certificate {
+	return nil
+}
+
+func (cf tCertFetcher) ReadDefaultCertificate(defaultCertDir string) *config.Certificate {
+	return nil
+}
+
+func (cf tCertFetcher) LookForCertUpdates(do func(string)) {
 }
 
 func (p *tProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {

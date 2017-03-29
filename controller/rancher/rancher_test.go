@@ -722,12 +722,27 @@ func (mf tMetaFetcher) GetSelfHostUUID() (string, error) {
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 }
 
+func (cf tCertFetcher) FetchCertificates(lbMeta *LBMetadata, isDefaultCert bool) ([]*config.Certificate, error) {
+	return nil, nil
+}
+
 func (cf tCertFetcher) FetchCertificate(certName string) (*config.Certificate, error) {
 	return nil, nil
 }
 
 func (cf tCertFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error {
 	return nil
+}
+
+func (cf tCertFetcher) ReadAllCertificatesFromDir(certDir string) []*config.Certificate {
+	return nil
+}
+
+func (cf tCertFetcher) ReadDefaultCertificate(defaultCertDir string) *config.Certificate {
+	return nil
+}
+
+func (cf tCertFetcher) LookForCertUpdates(do func(string)) {
 }
 
 func (p *tProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {

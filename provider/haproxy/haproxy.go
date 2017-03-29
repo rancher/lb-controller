@@ -110,12 +110,13 @@ func (lbp *Provider) applyHaproxyConfig(lbConfig *config.LoadBalancerConfig) err
 		}
 	}
 	certs := []*config.Certificate{}
-	if len(lbConfig.Certs) > 0 {
-		certs = append(certs, lbConfig.Certs...)
-	}
 	if lbConfig.DefaultCert != nil {
 		certs = append(certs, lbConfig.DefaultCert)
 	}
+	if len(lbConfig.Certs) > 0 {
+		certs = append(certs, lbConfig.Certs...)
+	}
+
 	for _, cert := range certs {
 		certStr := fmt.Sprintf("%s\n%s", cert.Key, cert.Cert)
 		b := []byte(certStr)

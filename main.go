@@ -21,12 +21,13 @@ var (
 )
 
 func init() {
+	//logrus.SetLevel(logrus.DebugLevel)
 	logrus.SetOutput(os.Stdout)
 }
 
 func setEnv() {
 	flag.Parse()
-	lbc = controller.GetController(*lbControllerName)
+	lbc = controller.GetController(*lbControllerName, fmt.Sprintf("http://%s/2015-12-19", *metadataAddress))
 	if lbc == nil {
 		logrus.Fatalf("Unable to find controller by name %s", *lbControllerName)
 	}
@@ -46,7 +47,7 @@ func main() {
 
 	go startHealthcheck()
 
-	lbc.Run(lbp, fmt.Sprintf("http://%s/2015-12-19", *metadataAddress))
+	lbc.Run(lbp)
 }
 
 func handleSigterm(lbc controller.LBController, lbp provider.LBProvider) {
