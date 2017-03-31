@@ -191,78 +191,88 @@ func (fetcher *RCertificateFetcher) ReadDefaultCertificate(defaultCertDir string
 }
 
 func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) {
-	lastUpdated := time.Now()
-	for {
-		logrus.Debugf("Start --- LookForCertUpdates polling dir %v", fetcher.CertDir)
-		forceUpdate := false
-		certsUpdatedFlag := false
-		logrus.Debugf("lastUpdated %v", lastUpdated)
 
-		if time.Since(lastUpdated).Seconds() >= fetcher.forceUpdateInterval {
-			logrus.Infof("LookForCertUpdates: Executing force update as certs in cache have not been updated in: %v seconds", fetcher.forceUpdateInterval)
-			forceUpdate = true
-		}
+	if fetcher.CertDir != "" || fetcher.DefaultCertDir != "" {
+		lastUpdated := time.Now()
+		for {
+			logrus.Debugf("Start --- LookForCertUpdates polling cert dir %v and default cert dir %v", fetcher.CertDir, fetcher.DefaultCertDir)
+			forceUpdate := false
+			certsUpdatedFlag := false
+			logrus.Debugf("lastUpdated %v", lastUpdated)
 
-		//read the certs from the dir into tempMap
-		fetcher.tempCertsMap = make(map[string]*config.Certificate)
-		err := filepath.Walk(fetcher.CertDir, fetcher.readCertificate)
-		if err != nil {
-			logrus.Errorf("LookForCertUpdates: Error %v reading certs from cert dir  %v", err, fetcher.CertDir)
-		} else {
-			//compare with existing cache
-			if forceUpdate || !reflect.DeepEqual(fetcher.CertsCache, fetcher.tempCertsMap) {
-				if !forceUpdate {
-					logrus.Infof("LookForCertUpdates: Found an update in cert dir %v, updating the cache", fetcher.CertDir)
+			if time.Since(lastUpdated).Seconds() >= fetcher.forceUpdateInterval {
+				logrus.Infof("LookForCertUpdates: Executing force update as certs in cache have not been updated in: %v seconds", fetcher.forceUpdateInterval)
+				forceUpdate = true
+			}
+
+			//read the certs from the dir into tempMap
+			if fetcher.CertDir != "" {
+				fetcher.tempCertsMap = make(map[string]*config.Certificate)
+				err := filepath.Walk(fetcher.CertDir, fetcher.readCertificate)
+				if err != nil {
+					logrus.Errorf("LookForCertUpdates: Error %v reading certs from cert dir  %v", err, fetcher.CertDir)
 				} else {
-					logrus.Infof("LookForCertUpdates: Force Update triggered, updating the cache from cert dir %v", fetcher.CertDir)
+					//compare with existing cache
+					if forceUpdate || !reflect.DeepEqual(fetcher.CertsCache, fetcher.tempCertsMap) {
+						if !forceUpdate {
+							logrus.Infof("LookForCertUpdates: Found an update in cert dir %v, updating the cache", fetcher.CertDir)
+						} else {
+							logrus.Infof("LookForCertUpdates: Force Update triggered, updating the cache from cert dir %v", fetcher.CertDir)
+						}
+						//there is some change, refresh certs
+						fetcher.mu.Lock()
+						fetcher.CertsCache = make(map[string]*config.Certificate)
+						for path, newCert := range fetcher.tempCertsMap {
+							fetcher.CertsCache[path] = newCert
+							logrus.Debugf("LookForCertUpdates: Cert is reloaded in cache : %v", newCert)
+						}
+						certsUpdatedFlag = true
+						fetcher.mu.Unlock()
+					}
 				}
-				//there is some change, refresh certs
-				fetcher.mu.Lock()
-				fetcher.CertsCache = make(map[string]*config.Certificate)
-				for path, newCert := range fetcher.tempCertsMap {
-					fetcher.CertsCache[path] = newCert
-					logrus.Debugf("LookForCertUpdates: Cert is reloaded in cache : %v", newCert)
+			}
+
+			//read the cert from the defaultCertDir into tempMap
+			if fetcher.DefaultCertDir != "" {
+				fetcher.tempCertsMap = make(map[string]*config.Certificate)
+				err := filepath.Walk(fetcher.DefaultCertDir, fetcher.readCertificate)
+				if err != nil {
+					logrus.Errorf("LookForCertUpdates: Error %v reading default cert from dir  %v", err, fetcher.DefaultCertDir)
+				} else {
+					var tempDefCert *config.Certificate
+					for _, cert := range fetcher.tempCertsMap {
+						tempDefCert = cert
+					}
+					//compare with existing default cert
+					if forceUpdate || !reflect.DeepEqual(fetcher.DefaultCert, tempDefCert) {
+						fetcher.mu.Lock()
+						fetcher.DefaultCert = tempDefCert
+						certsUpdatedFlag = true
+						fetcher.mu.Unlock()
+					}
 				}
-				certsUpdatedFlag = true
-				fetcher.mu.Unlock()
 			}
-		}
 
-		//read the cert from the defaultCertDir into tempMap
-		fetcher.tempCertsMap = make(map[string]*config.Certificate)
-		err = filepath.Walk(fetcher.DefaultCertDir, fetcher.readCertificate)
-		if err != nil {
-			logrus.Errorf("LookForCertUpdates: Error %v reading default cert from dir  %v", err, fetcher.DefaultCertDir)
-		} else {
-			var tempDefCert *config.Certificate
-			for _, cert := range fetcher.tempCertsMap {
-				tempDefCert = cert
+			if certsUpdatedFlag {
+				//scheduleApplyConfig
+				doOnUpdate("")
+				lastUpdated = time.Now()
 			}
-			//compare with existing default cert
-			if forceUpdate || !reflect.DeepEqual(fetcher.DefaultCert, tempDefCert) {
-				fetcher.mu.Lock()
-				fetcher.DefaultCert = tempDefCert
-				certsUpdatedFlag = true
-				fetcher.mu.Unlock()
+
+			if !fetcher.checkIfInitPollDone() {
+				fetcher.setInitPollDone()
 			}
-		}
 
-		if certsUpdatedFlag {
-			//scheduleApplyConfig
-			doOnUpdate("")
-			lastUpdated = time.Now()
+			logrus.Debug("Done --- LookForCertUpdates poll")
+			time.Sleep(time.Duration(fetcher.updateCheckInterval) * time.Second)
 		}
-
-		if !fetcher.checkIfInitPollDone() {
-			fetcher.setInitPollDone()
-		}
-
-		logrus.Debug("Done --- LookForCertUpdates poll")
-		time.Sleep(time.Duration(fetcher.updateCheckInterval) * time.Second)
 	}
 }
 
 func (fetcher *RCertificateFetcher) readCertificate(path string, f os.FileInfo, err error) error {
+	if err != nil {
+		return fmt.Errorf("Error while walking dir [%v]. Error: %v", path, err)
+	}
 	if f != nil && f.IsDir() {
 		logrus.Debugf("Walking dir %v", path)
 		isCertFound := false
