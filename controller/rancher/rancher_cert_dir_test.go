@@ -87,6 +87,22 @@ func TestCheckCertDirUpdate(t *testing.T) {
 		t.Fatalf("Error building config %v", err)
 	}
 
+	if len(newConfigs[0].Certs) != 3 {
+		t.Fatalf("Failed to read the Updated certificates from the directory")
+	}
+
+	err = ioutil.WriteFile("./testcerts/certs/c.com/privkey.pem", d1, 0644)
+	if err != nil {
+		t.Fatalf("Error writing file %v", err)
+	}
+
+	time.Sleep(10 * time.Second)
+
+	newConfigs, err2 = testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
+	if err2 != nil {
+		t.Fatalf("Error building config %v", err)
+	}
+
 	if len(newConfigs[0].Certs) != 4 {
 		t.Fatalf("Failed to read the Updated certificates from the directory")
 	}
