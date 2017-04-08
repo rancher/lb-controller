@@ -85,6 +85,9 @@ func (cfg *haproxyConfig) write(lbConfig *config.LoadBalancerConfig) (err error)
 	conf["backends"] = backends
 	conf["globalConfig"] = lbConfig.Config
 	conf["strictSni"] = lbConfig.DefaultCert == nil
+	if lbConfig.DefaultCert != nil {
+		conf["defaultCertFile"] = fmt.Sprintf("%s.pem", lbConfig.DefaultCert.Name)
+	}
 	err = t.Execute(w, conf)
 	return err
 }
