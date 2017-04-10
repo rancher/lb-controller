@@ -106,7 +106,7 @@ spec:
     servicePort: 90
 ```
 
-More info on the above can be found [here](http://docs.rancher.com/rancher/latest/en/kubernetes/ingress/)
+More info on the above can be found [here](https://docs.rancher.com/rancher/v1.5/en/kubernetes/ingress/)
 
 
 # To fix in the future release
