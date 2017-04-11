@@ -6,3 +6,6 @@ backend foo
 backend foofoo
     description my backend foofoo
     grace 90
+
+backend backend1
+	server $IP check

@@ -94,6 +94,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 	customConfigMap := make(map[string][]string)
 	var key string
 	defaultConfig := GetDefaultConfig()
+
 	serverPrefix := "server $IP"
 	for _, conf := range strings.Split(customConfig, "\n") {
 		trimmedConf := strings.TrimSpace(conf)
@@ -238,6 +239,9 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			continue
 		}
 		if _, ok := processedConfigs[k]; !ok {
+			if strings.HasPrefix(k, "backend") && strings.HasSuffix(k, "_$IP") {
+				continue
+			}
 			extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v, false, true))
 		}
 	}
