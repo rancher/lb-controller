@@ -224,7 +224,7 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 						fetcher.CertsCache = make(map[string]*config.Certificate)
 						for path, newCert := range fetcher.tempCertsMap {
 							fetcher.CertsCache[path] = newCert
-							logrus.Debugf("LookForCertUpdates: Cert is reloaded in cache : %v", newCert)
+							logrus.Debugf("LookForCertUpdates: Cert is reloaded in cache : %v", newCert.Name)
 						}
 						certsUpdatedFlag = true
 						fetcher.mu.Unlock()
@@ -244,7 +244,7 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 						tempDefCert = cert
 					}
 					//compare with existing default cert
-					if forceUpdate || !reflect.DeepEqual(fetcher.DefaultCert, tempDefCert) {
+					if forceUpdate || (tempDefCert != nil && !reflect.DeepEqual(fetcher.DefaultCert, tempDefCert)) {
 						fetcher.mu.Lock()
 						fetcher.DefaultCert = tempDefCert
 						certsUpdatedFlag = true
@@ -270,12 +270,13 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 }
 
 func (fetcher *RCertificateFetcher) readCertificate(path string, f os.FileInfo, err error) error {
-	if err != nil {
-		return fmt.Errorf("Error while walking dir [%v]. Error: %v", path, err)
-	}
 	if f != nil && f.IsDir() {
+		if err != nil {
+			return fmt.Errorf("Error while walking dir [%v]. Error: %v", path, err)
+		}
 		logrus.Debugf("Walking dir %v", path)
 		isCertFound := false
+		isKeyFound := false
 		cert := config.Certificate{}
 		cert.Name = f.Name()
 		files, err := ioutil.ReadDir(path)
@@ -286,19 +287,22 @@ func (fetcher *RCertificateFetcher) readCertificate(path string, f os.FileInfo, 
 			if !file.IsDir() {
 				contentBytes, err := fetcher.evaluatueLinkAndReadFile(path, file.Name())
 				if err != nil {
-					return err
-				}
-				if file.Name() == fetcher.CertName {
-					isCertFound = true
-					cert.Cert = string(*contentBytes)
-				} else if file.Name() == fetcher.KeyName {
-					isCertFound = true
-					cert.Key = string(*contentBytes)
+					logrus.Errorf("Error while reading file [%v]. Error: %v", file.Name(), err)
+				} else {
+					if file.Name() == fetcher.CertName {
+						isCertFound = true
+						cert.Cert = string(*contentBytes)
+					} else if file.Name() == fetcher.KeyName {
+						isKeyFound = true
+						cert.Key = string(*contentBytes)
+					}
 				}
 			}
 		}
-		if isCertFound {
+		if isCertFound && isKeyFound {
 			fetcher.tempCertsMap[path] = &cert
+		} else if isCertFound || isKeyFound {
+			logrus.Warnf("Skipping incomplete cert found under dir [%v], [isCertFound %v] [isKeyFound %v]", path, isCertFound, isKeyFound)
 		}
 	}
 	return nil
