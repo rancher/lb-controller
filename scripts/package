@@ -12,6 +12,12 @@ cd $(dirname $0)/../package
 TAG=${TAG:-${VERSION}${SUFFIX}}
 REPO=${REPO:-rancher}
 
+if [ ! -e ../bin/lb-controller ]; then
+    ../scripts/build
+fi
+
+echo "" > ../dist/images
+
 for dir in */
 do
     cd $dir
@@ -19,7 +25,9 @@ do
     cp ../../bin/lb-controller .
     cp -r ../../provider/${provider_type}/scripts scripts
     cp -r ../../provider/${provider_type}/config config
-    docker build -t ${REPO}/lb-service-${provider_type}:${TAG} .
-    echo Built ${REPO}/lb-service-${provider_type}:${TAG}
+    IMAGE=${REPO}/lb-service-${provider_type}:${TAG}
+    docker build -t $IMAGE .
+    echo ${IMAGE} >> ../../dist/images
+    echo Built $IMAGE
     cd ..
 done
