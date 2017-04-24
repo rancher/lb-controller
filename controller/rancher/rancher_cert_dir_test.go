@@ -107,3 +107,43 @@ func TestCheckCertDirUpdate(t *testing.T) {
 		t.Fatalf("Failed to read the Updated certificates from the directory")
 	}
 }
+
+func TestCheckDefaultCertRemoval(t *testing.T) {
+	path := "./testcerts/tempcerts"
+	os.MkdirAll(path, os.ModePerm)
+	defer os.RemoveAll(path)
+
+	err := os.Rename("./testcerts/defaultCert/default.com/chain.pem", "./testcerts/tempcerts/chain.pem")
+
+	if err != nil {
+		t.Fatalf("Error moving default cert %v", err)
+	}
+
+	time.Sleep(10 * time.Second)
+
+	newConfigs, err2 := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
+	if err2 != nil {
+		t.Fatalf("Error building config %v", err)
+	}
+
+	if newConfigs[0].DefaultCert != nil {
+		t.Fatalf("Failed to sync the update of removing the default certificate from the directory")
+	}
+
+	err = os.Rename("./testcerts/tempcerts/chain.pem", "./testcerts/defaultCert/default.com/chain.pem")
+
+	if err != nil {
+		t.Fatalf("Error moving back the default cert %v", err)
+	}
+
+	time.Sleep(10 * time.Second)
+
+	configs, err := testlbc.BuildConfigFromMetadata("test", "", "", "any", nil)
+	if err != nil {
+		t.Fatalf("Error building config %v", err)
+	}
+
+	if configs[0].DefaultCert == nil {
+		t.Fatalf("Failed to read the default certificate from the directory")
+	}
+}
