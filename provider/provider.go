@@ -17,6 +17,10 @@ type LBProvider interface {
 	Stop() error
 	IsHealthy() bool
 	ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error
+	IsEndpointUpForDrain(*config.Endpoint) bool
+	DrainEndpoint(*config.Endpoint) bool
+	IsEndpointDrained(*config.Endpoint) bool
+	RemoveEndpointFromDrain(ep *config.Endpoint)
 }
 
 var (
