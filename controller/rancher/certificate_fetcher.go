@@ -244,7 +244,7 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 						tempDefCert = cert
 					}
 					//compare with existing default cert
-					if forceUpdate || (tempDefCert != nil && !reflect.DeepEqual(fetcher.DefaultCert, tempDefCert)) {
+					if forceUpdate || !reflect.DeepEqual(fetcher.DefaultCert, tempDefCert) {
 						fetcher.mu.Lock()
 						fetcher.DefaultCert = tempDefCert
 						certsUpdatedFlag = true
