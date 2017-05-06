@@ -2,6 +2,12 @@ package rancherglb
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/patrickmn/go-cache"
 	"github.com/rancher/go-rancher-metadata/metadata"
@@ -11,11 +17,6 @@ import (
 	"github.com/rancher/lb-controller/controller/rancher"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
-	"reflect"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func init() {
@@ -30,7 +31,11 @@ func init() {
 func (lbc *glbController) Init(metadataURL string) {
 	lbc.rancherController.Init(metadataURL)
 
-	metadataClient, err := metadata.NewClientAndWait(metadataURL)
+	clientIP, err := utils.GetClientIP()
+	if err != nil {
+		logrus.Error(err)
+	}
+	metadataClient, err := metadata.NewClientWithIPAndWait(metadataURL, clientIP)
 	if err != nil {
 		logrus.Fatalf("Error initiating metadata client: %v", err)
 	}

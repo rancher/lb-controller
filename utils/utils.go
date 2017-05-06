@@ -1,12 +1,19 @@
 package controller
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/Sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
-	"time"
+)
+
+const (
+	defaultLinkName = "eth0"
 )
 
 var (
@@ -80,4 +87,23 @@ func NewTaskQueue(syncFn func(string)) *TaskQueue {
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
 	}
+}
+
+func GetClientIP() (string, error) {
+	link, err := netlink.LinkByName(defaultLinkName)
+	if err != nil {
+		return "", fmt.Errorf("could not get interface: %v", err)
+	}
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		return "", fmt.Errorf("could not get list of IP addresses: %v", err)
+	}
+
+	for _, addr := range addrs {
+		// return first IPv4 address. To4() returns nil if IP is not v4
+		if addr.IP.To4() != nil {
+			return addr.IP.String(), nil
+		}
+	}
+	return "", fmt.Errorf("%s doesn't have an IPv4 address", defaultLinkName)
 }

@@ -4,13 +4,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher-metadata/metadata"
-	"github.com/rancher/go-rancher/v2"
-	"github.com/rancher/lb-controller/config"
-	"github.com/rancher/lb-controller/controller"
-	"github.com/rancher/lb-controller/provider"
-	utils "github.com/rancher/lb-controller/utils"
 	"os"
 	"regexp"
 	"sort"
@@ -18,6 +11,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/controller"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
 )
 
 func init() {
@@ -89,7 +90,11 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 		logrus.Fatalf("Failed to convert CERTS_FORCE_UPDATE_INTERVAL %v", err)
 	}
 
-	metadataClient, err := metadata.NewClientAndWait(metadataURL)
+	clientIP, err := utils.GetClientIP()
+	if err != nil {
+		logrus.Error(err)
+	}
+	metadataClient, err := metadata.NewClientWithIPAndWait(metadataURL, clientIP)
 	if err != nil {
 		logrus.Fatalf("Error initiating metadata client: %v", err)
 	}
