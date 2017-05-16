@@ -1,4 +1,5 @@
-FROM ubuntu:16.04
+FROM rancher/agent-base:v0.3.0
+
 MAINTAINER Rancher Labs, Inc.
 RUN apt-get update && apt-get install -y \
     wget \
