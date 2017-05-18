@@ -1,11 +1,16 @@
 package kubernetes
 
 import (
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"os"
+	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/config"
@@ -24,8 +29,6 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/watch"
-	"os"
-	"strconv"
 )
 
 var (
@@ -37,27 +40,48 @@ var (
 const rancherStickinessPolicyLabel = "io.rancher.stickiness.policy"
 
 func init() {
-	var server string
-	if server = os.Getenv("KUBERNETES_URL"); len(server) == 0 {
-		logrus.Info("KUBERNETES_URL is not set, skipping init of kubernetes controller")
-		return
-	}
-	config := &restclient.Config{
-		Host:          server,
-		ContentConfig: restclient.ContentConfig{GroupVersion: &unversioned.GroupVersion{Version: "v1"}},
-	}
-	kubeClient, err := client.New(config)
+	if err := func() error {
+		server := os.Getenv("KUBERNETES_URL")
+		if server == "" {
+			return errors.New("KUBERNETES_URL is not set")
+		}
 
-	if err != nil {
-		logrus.Fatalf("failed to create kubernetes client: %v", err)
-	}
+		bytes, err := ioutil.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("Failed to read token from stdin: %v", err)
+		}
+		token := strings.TrimSpace(string(bytes))
+		if token == "" {
+			return errors.New("No token passed in from stdin")
+		}
 
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, api.NamespaceAll)
-	if err != nil {
-		logrus.Fatalf("%v", err)
-	}
+		config := &restclient.Config{
+			Host:        server,
+			Insecure:    true,
+			BearerToken: token,
+			ContentConfig: restclient.ContentConfig{
+				GroupVersion: &unversioned.GroupVersion{
+					Version: "v1",
+				},
+			},
+		}
 
-	controller.RegisterController(lbc.GetName(), lbc)
+		kubeClient, err := client.New(config)
+		if err != nil {
+			return err
+		}
+
+		lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, api.NamespaceAll)
+		if err != nil {
+			return err
+		}
+
+		controller.RegisterController(lbc.GetName(), lbc)
+
+		return nil
+	}(); err != nil {
+		logrus.Errorf("Failed to initialize Kubernetes controller: %v", err)
+	}
 }
 
 func (lbc *loadBalancerController) Init(metadataURL string) {
