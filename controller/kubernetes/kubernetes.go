@@ -37,7 +37,10 @@ var (
 		`Relist and confirm cloud resources this often.`)
 )
 
-const rancherStickinessPolicyLabel = "io.rancher.stickiness.policy"
+const (
+	rancherStickinessPolicyLabel = "io.rancher.stickiness.policy"
+	caLocation                   = "/etc/kubernetes/ssl/ca.pem"
+)
 
 func init() {
 	if err := func() error {
@@ -56,8 +59,10 @@ func init() {
 		}
 
 		config := &restclient.Config{
-			Host:        server,
-			Insecure:    true,
+			Host: server,
+			TLSClientConfig: restclient.TLSClientConfig{
+				CAFile: caLocation,
+			},
 			BearerToken: token,
 			ContentConfig: restclient.ContentConfig{
 				GroupVersion: &unversioned.GroupVersion{
