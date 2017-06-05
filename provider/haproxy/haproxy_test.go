@@ -515,3 +515,60 @@ func TestHaproxyConfigWriteDefaultCert(t *testing.T) {
 		t.Fatalf("Error validating default cert presence in haproxy config")
 	}
 }
+
+func TestHaproxyConfigWriteDefaultCertWithSpace(t *testing.T) {
+	backends := []*config.BackendService{}
+	var eps config.Endpoints
+	ep := &config.Endpoint{
+		Name: "s1",
+		IP:   "10.1.1.1",
+		Port: 90,
+	}
+	eps = append(eps, ep)
+	backend := &config.BackendService{
+		UUID:      "bar",
+		Port:      8080,
+		Protocol:  config.HTTPProto,
+		Endpoints: eps,
+	}
+	backends = append(backends, backend)
+	frontend := &config.FrontendService{
+		Name:            "foo",
+		Port:            80,
+		Protocol:        config.HTTPSProto,
+		BackendServices: backends,
+	}
+
+	frontends := []*config.FrontendService{}
+	frontends = append(frontends, frontend)
+
+	defCert := &config.Certificate{
+		Name: "my default certificate",
+		Cert: "------Begin Certificate-----",
+		Key:  "------Begin Key-----",
+	}
+
+	lbConfig := &config.LoadBalancerConfig{
+		FrontendServices: frontends,
+		DefaultCert:      defCert,
+	}
+	defer os.RemoveAll(lbp.cfg.Config)
+	err := lbp.cfg.write(lbConfig)
+
+	if err != nil {
+		t.Fatalf("Error while writing haproxy config: %v", err)
+	}
+
+	cfgFile := ""
+
+	b, err := ioutil.ReadFile(lbp.cfg.Config)
+	if err != nil {
+		t.Fatalf("Error while reading the haproxy config file: %v", err)
+	}
+	cfgFile = string(b)
+
+	//make sure the cfg file has default cert mentioned and spaces escaped
+	if !strings.Contains(cfgFile, "ssl crt /etc/haproxy/certs/current/my\\ default\\ certificate.pem ssl crt /etc/haproxy/certs/current") {
+		t.Fatalf("Error validating default cert presence in haproxy config")
+	}
+}
