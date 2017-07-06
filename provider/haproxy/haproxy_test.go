@@ -168,6 +168,54 @@ func TestBuildCustomConfigExtraFrontend(t *testing.T) {
 	}
 }
 
+func TestBuildCustomConfigMultipleExtra(t *testing.T) {
+	customConfig, err := getCustomConfig("custom_config_multiple_extra")
+	if err != nil {
+		t.Fatalf("Failed to read custom config: %v", err)
+	}
+	backends := []*config.BackendService{}
+	var eps config.Endpoints
+	ep := &config.Endpoint{
+		Name: "s1",
+		IP:   "10.1.1.1",
+		Port: 90,
+	}
+	eps = append(eps, ep)
+	backend := &config.BackendService{
+		UUID:      "bar",
+		Port:      8080,
+		Protocol:  config.HTTPProto,
+		Endpoints: eps,
+	}
+	backends = append(backends, backend)
+	frontend := &config.FrontendService{
+		Name:            "foo",
+		Port:            80,
+		Protocol:        config.HTTPProto,
+		BackendServices: backends,
+	}
+
+	frontends := []*config.FrontendService{}
+	frontends = append(frontends, frontend)
+
+	lbConfig := &config.LoadBalancerConfig{
+		FrontendServices: frontends,
+	}
+	err = lbp.ProcessCustomConfig(lbConfig, customConfig)
+	if err != nil {
+		t.Fatalf("Error while process custom config: %v", err)
+	}
+
+	result, err := validateCustomConfig("custom_config_multiple_extra_resp", lbConfig.Config)
+	if err != nil {
+		t.Fatalf("Error validating custom config: %v", err)
+	}
+
+	if !result {
+		t.Fatal("Configs don't match")
+	}
+}
+
 func TestBuildCustomConfigBackendSection(t *testing.T) {
 	customConfig, err := getCustomConfig("custom_config_frontend_backend")
 	if err != nil {

@@ -1,0 +1,19 @@
+defaults
+  log 127.0.0.1:8514 local0 debug
+
+frontend 80
+  bind *:80
+  mode http
+  redirect scheme https code 301 if !{ ssl_fc }
+
+listen stats :9000
+  mode http
+  stats enable
+  stats hide-version
+  stats realm Haproxy\ Statistics
+  stats uri /haproxy_stats
+
+frontend 81
+  bind *:81
+  mode http
+  redirect scheme https code 301 if !{ ssl_fc }

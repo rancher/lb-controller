@@ -234,7 +234,14 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 
 	// append non-processed config
 	var extraConfig string
-	for k, v := range customConfigMap {
+	customConfigMapKeys := []string{}
+	for k := range customConfigMap {
+		customConfigMapKeys = append(customConfigMapKeys, k)
+	}
+	sort.Strings(customConfigMapKeys)
+	for _, k := range customConfigMapKeys {
+		v := customConfigMap[k]
+
 		if strings.EqualFold(k, "global") || strings.EqualFold(k, "backend") || strings.EqualFold(k, "defaults") {
 			continue
 		}
@@ -242,7 +249,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			if strings.HasPrefix(k, "backend") && strings.HasSuffix(k, "_$IP") {
 				continue
 			}
-			extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v, false, true))
+			extraConfig = fmt.Sprintf("%s%s\n%s\n", extraConfig, k, confToString(v, false, true))
 		}
 	}
 
