@@ -411,7 +411,9 @@ func (lbp *LBProvider) updateRancherLBService(lbConfig *config.LoadBalancerConfi
 							if strings.EqualFold(updated.Protocol, existing.Protocol) {
 								if strings.EqualFold(updated.Hostname, existing.Hostname) {
 									if strings.EqualFold(updated.Path, existing.Path) {
-										found = true
+										if strings.EqualFold(updated.ServiceId, existing.ServiceId) {
+											found = true
+										}
 									}
 								}
 							}
