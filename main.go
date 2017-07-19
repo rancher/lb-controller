@@ -1,20 +1,20 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
+	"github.com/urfave/cli"
 	"os"
 	"os/signal"
 	"syscall"
 )
 
 var (
-	lbControllerName = flag.String("controller", "kubernetes", "Controller plugin name")
-	lbProviderName   = flag.String("provider", "haproxy", "Provider plugin name")
-	metadataAddress  = flag.String("metadata-address", "rancher-metadata", "Rancher metadata address")
+	lbControllerName string
+	lbProviderName   string
+	metadataAddress  string
 
 	lbc controller.LBController
 	lbp provider.LBProvider
@@ -25,29 +25,55 @@ func init() {
 	logrus.SetOutput(os.Stdout)
 }
 
-func setEnv() {
-	flag.Parse()
-	lbc = controller.GetController(*lbControllerName, fmt.Sprintf("http://%s/2015-12-19", *metadataAddress))
-	if lbc == nil {
-		logrus.Fatalf("Unable to find controller by name %s", *lbControllerName)
-	}
-	lbp = provider.GetProvider(*lbProviderName)
-	if lbp == nil {
-		logrus.Fatalf("Unable to find provider by name %s", *lbProviderName)
-	}
-}
-
 func main() {
-	logrus.Infof("Starting Rancher LB service")
-	setEnv()
-	logrus.Infof("LB controller: %s", lbc.GetName())
-	logrus.Infof("LB provider: %s", lbp.GetName())
+	app := cli.NewApp()
 
-	go handleSigterm(lbc, lbp)
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "controller",
+			Value: "kubernetes",
+			Usage: "Controller plugin name",
+		}, cli.StringFlag{
+			Name:  "provider",
+			Value: "haproxy",
+			Usage: "Provider plugin name",
+		}, cli.StringFlag{
+			Name:  "metadata-address",
+			Value: "rancher-metadata",
+			Usage: "Rancher metadata address",
+		}, cli.StringFlag{
+			Name:  "rancher-lb-infix",
+			Value: "rancherlb",
+			Usage: "Rancher provider Load Balancer name infix",
+		},
+	}
 
-	go startHealthcheck()
+	app.Action = func(c *cli.Context) error {
+		logrus.Infof("Starting Rancher LB service")
+		lbControllerName = c.String("controller")
+		lbProviderName = c.String("provider")
+		metadataAddress = c.String("metadata-address")
+		lbc = controller.GetController(lbControllerName, fmt.Sprintf("http://%s/2015-12-19", metadataAddress))
+		if lbc == nil {
+			logrus.Fatalf("Unable to find controller by name %s", lbControllerName)
+		}
+		lbp = provider.GetProvider(lbProviderName)
+		if lbp == nil {
+			logrus.Fatalf("Unable to find provider by name %s", lbProviderName)
+		}
+		lbp.Init(c)
+		logrus.Infof("LB controller: %s", lbc.GetName())
+		logrus.Infof("LB provider: %s", lbp.GetName())
 
-	lbc.Run(lbp)
+		go handleSigterm(lbc, lbp)
+
+		go startHealthcheck()
+
+		lbc.Run(lbp)
+		return nil
+	}
+
+	app.Run(os.Args)
 }
 
 func handleSigterm(lbc controller.LBController, lbp provider.LBProvider) {
