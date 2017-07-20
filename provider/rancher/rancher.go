@@ -9,7 +9,6 @@ import (
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
-	"github.com/urfave/cli"
 	"os"
 	"sort"
 	"strconv"
@@ -57,6 +56,14 @@ func init() {
 		logrus.Info("CATTLE_SECRET_KEY is not set, skipping init of Rancher LB provider")
 		return
 	}
+
+	separator := "rancherlb"
+	userSet := os.Getenv("RANCHER_LB_SEPARATOR")
+	if len(userSet) != 0 {
+		separator = userSet
+	}
+
+	lbSvcNameSeparator = fmt.Sprintf("-%s-", separator)
 
 	opts := &client.ClientOpts{
 		Url:       cattleURL,
@@ -890,9 +897,4 @@ func (lbp *LBProvider) waitForCondition(condition string, callback waitCallback)
 
 func (lbp *LBProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
-}
-
-func (lbp *LBProvider) Init(c *cli.Context) {
-	lbSvcNameSeparator = fmt.Sprintf("-%s-", c.String("rancher-lb-infix"))
-	logrus.Infof("separator is %s", lbSvcNameSeparator)
 }

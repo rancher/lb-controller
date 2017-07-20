@@ -8,7 +8,6 @@ import (
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/controller/rancher"
 	utils "github.com/rancher/lb-controller/utils"
-	"github.com/urfave/cli"
 	"strings"
 	"testing"
 	"time"
@@ -552,7 +551,4 @@ func (p *tProvider) IsHealthy() bool {
 
 func (p *tProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
-}
-
-func (p *tProvider) Init(c *cli.Context) {
 }

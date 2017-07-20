@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/rancher/lb-controller/config"
 	utils "github.com/rancher/lb-controller/utils"
-	"github.com/urfave/cli"
 )
 
 const Localhost = "localhost"
@@ -18,7 +17,6 @@ type LBProvider interface {
 	Stop() error
 	IsHealthy() bool
 	ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error
-	Init(c *cli.Context)
 }
 
 var (
