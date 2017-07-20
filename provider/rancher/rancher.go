@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
+	"github.com/urfave/cli"
 	"os"
 	"sort"
 	"strconv"
@@ -21,10 +22,11 @@ type PublicEndpoint struct {
 	Port      int
 }
 
+var lbSvcNameSeparator string
+
 const (
 	controllerStackName          string = "kubernetes-ingress-lbs"
 	controllerExternalIDPrefix   string = "kubernetes-ingress-lbs://"
-	lbSvcNameSeparator           string = "-rancherlb-"
 	rancherSchedulerPrefix       string = "io.rancher.scheduler."
 	rancherStickinessPolicyLabel string = "io.rancher.stickiness.policy"
 	rancherLabelPrefix           string = "io.rancher."
@@ -888,4 +890,9 @@ func (lbp *LBProvider) waitForCondition(condition string, callback waitCallback)
 
 func (lbp *LBProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
+}
+
+func (lbp *LBProvider) Init(c *cli.Context) {
+	lbSvcNameSeparator = fmt.Sprintf("-%s-", c.String("rancher-lb-infix"))
+	logrus.Infof("separator is %s", lbSvcNameSeparator)
 }
