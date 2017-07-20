@@ -5,7 +5,6 @@ import (
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	utils "github.com/rancher/lb-controller/utils"
-	"github.com/urfave/cli"
 	"strings"
 	"testing"
 )
@@ -774,9 +773,6 @@ func (p *tProvider) IsHealthy() bool {
 
 func (p *tProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
-}
-
-func (p *tProvider) Init(c *cli.Context) {
 }
 
 func TestSelectorNoMatch(t *testing.T) {

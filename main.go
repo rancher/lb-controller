@@ -41,10 +41,6 @@ func main() {
 			Name:  "metadata-address",
 			Value: "rancher-metadata",
 			Usage: "Rancher metadata address",
-		}, cli.StringFlag{
-			Name:  "rancher-lb-infix",
-			Value: "rancherlb",
-			Usage: "Rancher provider Load Balancer name infix",
 		},
 	}
 
@@ -61,7 +57,6 @@ func main() {
 		if lbp == nil {
 			logrus.Fatalf("Unable to find provider by name %s", lbProviderName)
 		}
-		lbp.Init(c)
 		logrus.Infof("LB controller: %s", lbc.GetName())
 		logrus.Infof("LB provider: %s", lbp.GetName())
 

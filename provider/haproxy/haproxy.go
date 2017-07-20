@@ -6,7 +6,6 @@ import (
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
-	"github.com/urfave/cli"
 	"io"
 	"io/ioutil"
 	"os"
@@ -211,7 +210,4 @@ func (lbp *Provider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, cu
 
 func (lbp *Provider) CleanupConfig(name string) error {
 	return nil
-}
-
-func (lbp *Provider) Init(c *cli.Context) {
 }
