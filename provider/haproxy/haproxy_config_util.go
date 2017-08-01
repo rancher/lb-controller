@@ -1,12 +1,12 @@
 package haproxy
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/rancher/lb-controller/config"
-	//"github.com/Sirupsen/logrus"
 )
 
 func GetDefaultConfig() map[string]map[string]string {
@@ -233,7 +233,7 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 	}
 
 	// append non-processed config
-	var extraConfig string
+	var extraConfigBuffer bytes.Buffer
 	for k, v := range customConfigMap {
 		if strings.EqualFold(k, "global") || strings.EqualFold(k, "backend") || strings.EqualFold(k, "defaults") {
 			continue
@@ -242,12 +242,14 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 			if strings.HasPrefix(k, "backend") && strings.HasSuffix(k, "_$IP") {
 				continue
 			}
-			extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v, false, true))
+			extraConfigBuffer.WriteString(fmt.Sprintf("%s\n%s\n", k, confToString(v, false, true)))
+			// extraConfig = fmt.Sprintf("%s\n%s\n", k, confToString(v, false, true))
 		}
 	}
 
 	lbConfig.Config = fmt.Sprintf("global\n%s\n\ndefaults\n%s", confToString(customConfigMap["global"], false, true), confToString(customConfigMap["defaults"], false, true))
-	if extraConfig != "" {
+	extraConfig := extraConfigBuffer.String()
+	if len(extraConfig) > 0 {
 		lbConfig.Config = fmt.Sprintf("%s\n\n%s", lbConfig.Config, extraConfig)
 	}
 
