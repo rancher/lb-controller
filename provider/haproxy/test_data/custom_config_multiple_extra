@@ -6,7 +6,8 @@ frontend 80
   mode http
   redirect scheme https code 301 if !{ ssl_fc }
 
-listen stats :9000
+listen stats
+  bind *:9000
   mode http
   stats enable
   stats hide-version
