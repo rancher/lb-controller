@@ -33,6 +33,10 @@ RUN wget -O /usr/bin/update-rancher-ssl https://raw.githubusercontent.com/ranche
 
 COPY lb-controller.sh /usr/bin/
 
+RUN ln -sf /proc/1/fd/1 /var/log/haproxy/events
+RUN ln -sf /proc/1/fd/1 /var/log/haproxy/traffic
+RUN ln -sf /proc/1/fd/2 /var/log/haproxy/errors
+
 # So we do not write to the COW filesystem
 VOLUME /var/log/haproxy
 
