@@ -40,6 +40,8 @@ var (
 const (
 	rancherStickinessPolicyLabel = "io.rancher.stickiness.policy"
 	caLocation                   = "/etc/kubernetes/ssl/ca.pem"
+	ingressClassKey              = "kubernetes.io/ingress.class"
+	rancherIngressClass          = "rancher"
 )
 
 func init() {
@@ -383,8 +385,11 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 		return lbConfigs, nil
 	}
 	for _, ingIf := range ings {
-		backends := []*config.BackendService{}
 		ing := ingIf.(*extensions.Ingress)
+		if !isRancherIngress(ing) {
+			continue
+		}
+		backends := []*config.BackendService{}
 		// process default rule
 		if ing.Spec.Backend != nil {
 			svcName := ing.Spec.Backend.ServiceName
@@ -688,6 +693,13 @@ func (lbc *loadBalancerController) IsHealthy() bool {
 	if err != nil {
 		logrus.Errorf("Health check failed: unable to reach Kubernetes. Error: %#v", err)
 		return false
+	}
+	return true
+}
+
+func isRancherIngress(ing *extensions.Ingress) bool {
+	if class, exists := ing.Annotations[ingressClassKey]; exists {
+		return class == rancherIngressClass || class == ""
 	}
 	return true
 }
