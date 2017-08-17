@@ -119,6 +119,13 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 	}
 	lbc.CertFetcher = certFetcher
 
+	eHandler := &REventsHandler{
+		CattleURL:       cattleURL,
+		CattleAccessKey: cattleAccessKey,
+		CattleSecretKey: cattleSecretKey,
+	}
+	lbc.EventsHandler = eHandler
+
 }
 
 type LoadBalancerController struct {
@@ -131,6 +138,7 @@ type LoadBalancerController struct {
 	incrementalBackoffInterval int64
 	CertFetcher                CertificateFetcher
 	MetaFetcher                MetadataFetcher
+	EventsHandler              EventsHandler
 }
 
 type MetadataFetcher interface {
@@ -157,6 +165,8 @@ func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 
 	go lbc.LBProvider.Run(nil)
+
+	go lbc.EventsHandler.Subscribe()
 
 	go lbc.CertFetcher.LookForCertUpdates(lbc.ScheduleApplyConfig)
 
