@@ -752,6 +752,17 @@ func (p *tProvider) GetName() string {
 	return ""
 }
 
+func (p *tProvider) DrainEndpoint(ep *config.Endpoint) {
+}
+
+func (p *tProvider) IsEndpointUpForDrain(ep *config.Endpoint) bool {
+	return false
+}
+
+func (p *tProvider) IsEndpointDrained(ep *config.Endpoint) bool {
+	return false
+}
+
 func (p *tProvider) GetPublicEndpoints(configName string) []string {
 	return []string{}
 }

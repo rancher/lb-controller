@@ -30,6 +30,11 @@ func init() {
 }
 
 func (lbc *LoadBalancerController) Init(metadataURL string) {
+	for _, e := range os.Environ() {
+		pair := strings.Split(e, "=")
+		logrus.Infof("%v = %v", pair[0], pair[1])
+	}
+
 	cattleURL := os.Getenv("CATTLE_URL")
 	if len(cattleURL) == 0 {
 		logrus.Fatalf("CATTLE_URL is not set, fail to init Rancher LB provider")
@@ -123,6 +128,8 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 		CattleURL:       cattleURL,
 		CattleAccessKey: cattleAccessKey,
 		CattleSecretKey: cattleSecretKey,
+		DoOnEvent:       lbc.DrainEndpoint,
+		CheckOnEvent:    lbc.IsEndpointDrained,
 	}
 	lbc.EventsHandler = eHandler
 
@@ -181,6 +188,25 @@ func (mf RMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 func (lbc *LoadBalancerController) ScheduleApplyConfig(string) {
 	logrus.Debug("Scheduling apply config")
 	lbc.syncQueue.Enqueue(lbc.GetName())
+}
+
+func (lbc *LoadBalancerController) DrainEndpoint(ep *config.Endpoint) {
+
+	if lbc.LBProvider.IsEndpointUpForDrain(ep) {
+		logrus.Info("DrainEndpoint: The endpoint is already in drainlist")
+		return
+	}
+
+	logrus.Info("DrainEndpoint: Put the endpoint in drainlist")
+	lbc.LBProvider.DrainEndpoint(ep)
+
+	logrus.Info("DrainEndpoint: Scheduling apply config")
+	lbc.syncQueue.Enqueue(lbc.GetName())
+}
+
+func (lbc *LoadBalancerController) IsEndpointDrained(ep *config.Endpoint) bool {
+	logrus.Info("IsEndpointDrained: check if the endpoint drained")
+	return lbc.LBProvider.IsEndpointDrained(ep)
 }
 
 func (lbc *LoadBalancerController) Stop() error {
@@ -274,7 +300,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			if err != nil {
 				return nil, err
 			}
-
+			logrus.Infof("buildconfig getServiceEndpoints: %v", eps)
 			hc, err = getServiceHealthCheck(service)
 			if err != nil {
 				return nil, err
@@ -289,6 +315,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 				continue
 			}
 			eps = append(eps, ep)
+			logrus.Infof("buildconfig getContainerEndpoint: %v", eps)
 			hc, err = getContainerHealthcheck(container)
 			if err != nil {
 				return nil, err
@@ -649,6 +676,8 @@ func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Serv
 }
 
 func getContainerEndpoint(c *metadata.Container, targetPort int, selfHostUUID string, localServicePreference string) (*config.Endpoint, bool) {
+	logrus.Infof("getContainerEndpoint found IP: %v, state: %v", c.PrimaryIp, c.State)
+
 	if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
 		ep := &config.Endpoint{
 			Name: hashIP(c.PrimaryIp),

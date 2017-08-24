@@ -24,6 +24,8 @@ func GetDefaultConfig() map[string]map[string]string {
 	global["user haproxy"] = ""
 	global["group haproxy"] = ""
 	global["daemon"] = ""
+	global["stats socket"] = "/var/run/haproxy.sock mode 600 level admin"
+	global["stats timeout"] = "2m"
 
 	defaults["mode"] = "tcp"
 	defaults["option redispatch"] = ""
@@ -90,7 +92,7 @@ func isDirective(directive string) bool {
 	return false
 }
 
-func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
+func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string, drainMgr drainManager) error {
 	customConfigMap := make(map[string][]string)
 	var key string
 	defaultConfig := GetDefaultConfig()
@@ -226,6 +228,11 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 				//append cookie policy
 				if policy != nil {
 					ep.Config = fmt.Sprintf("%s cookie %s", ep.Config, ep.Name)
+				}
+
+				//check if the endpoint is in drain list. If yes then add weight 0 to ep.Config
+				if drainMgr.isEndpointUpForDrain(ep) {
+					ep.Config = fmt.Sprintf("%s weight %d", ep.Config, 0)
 				}
 			}
 		}

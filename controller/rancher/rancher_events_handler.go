@@ -4,6 +4,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	revents "github.com/rancher/event-subscriber/events"
 	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
 )
 
 type EventsHandler interface {
@@ -14,6 +15,8 @@ type REventsHandler struct {
 	CattleURL       string
 	CattleAccessKey string
 	CattleSecretKey string
+	DoOnEvent       func(*config.Endpoint)
+	CheckOnEvent    func(*config.Endpoint) bool
 }
 
 func (ehandler *REventsHandler) Subscribe() error {
@@ -23,7 +26,7 @@ func (ehandler *REventsHandler) Subscribe() error {
 		"ping":         ehandler.handle,
 	}
 
-	router, err := revents.NewEventRouter("", 0, ehandler.CattleURL, ehandler.CattleAccessKey, ehandler.CattleSecretKey, nil, eventHandlers, "", 3, revents.DefaultPingConfig)
+	router, err := revents.NewEventRouter("", 0, ehandler.CattleURL, ehandler.CattleAccessKey, ehandler.CattleSecretKey, nil, eventHandlers, "", 250, revents.DefaultPingConfig)
 	if err != nil {
 		return err
 	}
@@ -38,7 +41,20 @@ func (ehandler *REventsHandler) handle(event *revents.Event, cli *client.Rancher
 		"resourceID": event.ResourceID,
 	})
 	log.Infof("Rancher event: %#v", event)
+
+	if event.Name == "target.drain" {
+		sendReply, err := ehandler.HandleDrainEvent(event, cli)
+		if err != nil {
+			log.Errorf("Error handling drain event: %#v", err)
+			return err
+		}
+		if !sendReply {
+			return nil
+		}
+	}
+
 	if err := ehandler.CreateAndPublishReply(event, cli); err != nil {
+		log.Errorf("Error replying to the event: %#v", err)
 		return err
 	}
 	return nil
@@ -60,6 +76,8 @@ func (ehandler *REventsHandler) PublishReply(reply *client.Publish, apiClient *c
 
 func (ehandler *REventsHandler) CreateAndPublishReply(event *revents.Event, cli *client.RancherClient) error {
 	reply := ehandler.NewReply(event)
+	logrus.Infof("New reply created to the event: %#v", reply)
+
 	if reply.Name == "" {
 		return nil
 	}
@@ -82,4 +100,30 @@ func (ehandler *REventsHandler) ErrorReply(event *revents.Event, cli *client.Ran
 		return err
 	}
 	return nil
+}
+
+func (ehandler *REventsHandler) HandleDrainEvent(event *revents.Event, cli *client.RancherClient) (bool, error) {
+
+	//form the endpoint from the eventVO
+
+	logrus.Infof("Received target.drain primaryIP: %v, targetPort: %v", event.Data["primaryIpAddress"], event.Data["targetPort"])
+
+	primaryIP, ok := event.Data["targetIPaddress"]
+
+	if ok {
+		ep := &config.Endpoint{
+			IP: primaryIP.(string),
+		}
+		ep.Name = hashIP(ep.IP)
+
+		drained := ehandler.CheckOnEvent(ep)
+		logrus.Infof("Check ep %v is drained: %v", ep.Name, drained)
+
+		if !drained {
+			ehandler.DoOnEvent(ep)
+		} else {
+			return true, nil
+		}
+	}
+	return false, nil
 }

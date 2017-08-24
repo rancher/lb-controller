@@ -214,6 +214,17 @@ func (lbp *LBProvider) GetName() string {
 	return "rancher"
 }
 
+func (lbp *LBProvider) DrainEndpoint(ep *config.Endpoint) {
+}
+
+func (lbp *LBProvider) IsEndpointUpForDrain(ep *config.Endpoint) bool {
+	return false
+}
+
+func (lbp *LBProvider) IsEndpointDrained(ep *config.Endpoint) bool {
+	return false
+}
+
 func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 	epStr := []string{}
 	lb, err := lbp.getLBServiceForConfig(configName)

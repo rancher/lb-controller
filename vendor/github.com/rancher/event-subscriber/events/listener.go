@@ -165,7 +165,9 @@ func (router *EventRouter) Stop() {
 }
 
 func (router *EventRouter) subscribeToEvents(subscribeURL string, accessKey string, secretKey string, data url.Values) (*websocket.Conn, error) {
-	dialer := &websocket.Dialer{}
+	dialer := &websocket.Dialer{
+		HandshakeTimeout: time.Second * 30,
+	}
 	headers := http.Header{}
 	headers.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(accessKey+":"+secretKey)))
 	subscribeURL = subscribeURL + "?" + data.Encode()
