@@ -104,16 +104,17 @@ type Host struct {
 }
 
 type PortRule struct {
-	SourcePort  int    `json:"source_port"`
-	Protocol    string `json:"protocol"`
-	Path        string `json:"path"`
-	Hostname    string `json:"hostname"`
-	Service     string `json:"service"`
-	TargetPort  int    `json:"target_port"`
-	Priority    int    `json:"priority"`
-	BackendName string `json:"backend_name"`
-	Selector    string `json:"selector"`
-	Container   string `json:"container"`
+	SourcePort    int    `json:"source_port"`
+	Protocol      string `json:"protocol"`
+	Path          string `json:"path"`
+	Hostname      string `json:"hostname"`
+	Service       string `json:"service"`
+	TargetPort    int    `json:"target_port"`
+	Priority      int    `json:"priority"`
+	BackendName   string `json:"backend_name"`
+	Selector      string `json:"selector"`
+	Container     string `json:"container"`
+	ContainerUUID string `json:"container_uuid"`
 }
 
 type LBConfig struct {

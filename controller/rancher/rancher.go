@@ -140,7 +140,7 @@ type MetadataFetcher interface {
 	OnChange(intervalSeconds int, do func(string))
 	GetServices() ([]metadata.Service, error)
 	GetSelfHostUUID() (string, error)
-	GetContainer(envUUID string, instanceName string) (*metadata.Container, error)
+	GetContainer(envUUID string, containerUUID string) (*metadata.Container, error)
 }
 
 type RMetaFetcher struct {
@@ -271,7 +271,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 				return nil, err
 			}
 		} else {
-			container, err := lbc.MetaFetcher.GetContainer(envUUID, rule.Container)
+			container, err := lbc.MetaFetcher.GetContainer(envUUID, rule.ContainerUUID)
 			if err != nil {
 				return nil, err
 			}
@@ -537,7 +537,7 @@ func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName stri
 	return &service, nil
 }
 
-func (mf RMetaFetcher) GetContainer(envUUID string, containerName string) (*metadata.Container, error) {
+func (mf RMetaFetcher) GetContainer(envUUID string, containerUUID string) (*metadata.Container, error) {
 	cs, err := mf.MetadataClient.GetContainers()
 	if err != nil {
 		return nil, err
@@ -548,7 +548,7 @@ func (mf RMetaFetcher) GetContainer(envUUID string, containerName string) (*meta
 		if !strings.EqualFold(c.EnvironmentUUID, envUUID) {
 			continue
 		}
-		if strings.EqualFold(c.Name, containerName) {
+		if strings.EqualFold(c.UUID, containerUUID) {
 			container = c
 			break
 		}
