@@ -2,15 +2,16 @@ package rancherglb
 
 import (
 	// "github.com/Sirupsen/logrus"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/patrickmn/go-cache"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/controller/rancher"
 	utils "github.com/rancher/lb-controller/utils"
-	"strings"
-	"testing"
-	"time"
 )
 
 var glb *glbController
@@ -457,8 +458,8 @@ func (mf tMetaFetcher) GetSelfService() (metadata.Service, error) {
 	var portRules []metadata.PortRule
 	portRules = append(portRules, portRule)
 	lbConfig := metadata.LBConfig{
-		DefaultCert: defaultCert,
-		PortRules:   portRules,
+		DefaultCertificateID: defaultCert,
+		PortRules:            portRules,
 	}
 	lbfoo := metadata.Service{
 		Kind:      "loadBalancerService",
@@ -478,17 +479,17 @@ func (cf tCertFetcher) FetchCertificates(lbMeta *rancher.LBMetadata, isDefaultCe
 	var defaultCert *config.Certificate
 
 	if !isDefaultCert {
-		for _, certName := range lbMeta.Certs {
-			cert, err := cf.FetchRancherCertificate(certName)
+		for _, certID := range lbMeta.CertificateIDs {
+			cert, err := cf.FetchRancherCertificate(certID)
 			if err != nil {
 				return nil, err
 			}
 			certs = append(certs, cert)
 		}
 	} else {
-		if lbMeta.DefaultCert != "" {
+		if lbMeta.DefaultCertificateID != "" {
 			var err error
-			defaultCert, err = cf.FetchRancherCertificate(lbMeta.DefaultCert)
+			defaultCert, err = cf.FetchRancherCertificate(lbMeta.DefaultCertificateID)
 			if err != nil {
 				return nil, err
 			}

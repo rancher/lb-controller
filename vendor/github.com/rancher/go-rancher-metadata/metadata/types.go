@@ -43,6 +43,7 @@ type Service struct {
 	EnvironmentUUID    string                 `json:"environment_uuid"`
 	State              string                 `json:"state"`
 	System             bool                   `json:"system"`
+	EnvironmentName    string                 `json:"environment_name"`
 }
 
 type Container struct {
@@ -54,6 +55,7 @@ type Container struct {
 	ServiceName              string            `json:"service_name"`
 	ServiceIndex             string            `json:"service_index"`
 	StackName                string            `json:"stack_name"`
+	StackUUID                string            `json:"stack_uuid"`
 	Labels                   map[string]string `json:"labels"`
 	CreateIndex              int               `json:"create_index"`
 	HostUUID                 string            `json:"host_uuid"`
@@ -73,11 +75,14 @@ type Container struct {
 	System                   bool              `json:"system"`
 	EnvironmentUUID          string            `json:"environment_uuid"`
 	HealthCheck              HealthCheck       `json:"health_check"`
+	EnvironmentName          string            `json:"environment_name"`
+	ServiceUUID              string            `json:"service_uuid"`
 }
 
 type Network struct {
 	Name                string                 `json:"name"`
 	UUID                string                 `json:"uuid"`
+	EnvironmentUUID     string                 `json:"environment_uuid"`
 	Metadata            map[string]interface{} `json:"metadata"`
 	HostPorts           bool                   `json:"host_ports"`
 	Default             bool                   `json:"is_default"`
@@ -112,11 +117,11 @@ type PortRule struct {
 }
 
 type LBConfig struct {
-	Certs            []string           `json:"certs"`
-	DefaultCert      string             `json:"default_cert"`
-	PortRules        []PortRule         `json:"port_rules"`
-	Config           string             `json:"config"`
-	StickinessPolicy LBStickinessPolicy `json:"stickiness_policy"`
+	CertificateIDs       []string           `json:"certificate_ids"`
+	DefaultCertificateID string             `json:"default_certificate_id"`
+	PortRules            []PortRule         `json:"port_rules"`
+	Config               string             `json:"config"`
+	StickinessPolicy     LBStickinessPolicy `json:"stickiness_policy"`
 }
 
 type LBStickinessPolicy struct {

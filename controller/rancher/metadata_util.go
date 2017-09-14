@@ -2,16 +2,17 @@ package rancher
 
 import (
 	"encoding/json"
+
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/lb-controller/config"
 )
 
 type LBMetadata struct {
-	PortRules        []metadata.PortRule     `json:"port_rules"`
-	Certs            []string                `json:"certs"`
-	DefaultCert      string                  `json:"default_cert"`
-	Config           string                  `json:"config"`
-	StickinessPolicy config.StickinessPolicy `json:"stickiness_policy"`
+	PortRules            []metadata.PortRule     `json:"port_rules"`
+	CertificateIDs       []string                `json:"certificate_ids"`
+	DefaultCertificateID string                  `json:"default_certificate_id"`
+	Config               string                  `json:"config"`
+	StickinessPolicy     config.StickinessPolicy `json:"stickiness_policy"`
 }
 
 func GetLBMetadata(data interface{}) (*LBMetadata, error) {

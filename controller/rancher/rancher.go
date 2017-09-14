@@ -4,13 +4,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher-metadata/metadata"
-	"github.com/rancher/go-rancher/v2"
-	"github.com/rancher/lb-controller/config"
-	"github.com/rancher/lb-controller/controller"
-	"github.com/rancher/lb-controller/provider"
-	utils "github.com/rancher/lb-controller/utils"
 	"os"
 	"regexp"
 	"sort"
@@ -18,6 +11,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/controller"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
 )
 
 func init() {
@@ -192,10 +193,10 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 	lbConfigs := []*config.LoadBalancerConfig{}
 	if lbMeta == nil {
 		lbMeta = &LBMetadata{
-			PortRules:   make([]metadata.PortRule, 0),
-			Certs:       make([]string, 0),
-			DefaultCert: "",
-			Config:      "",
+			PortRules:            make([]metadata.PortRule, 0),
+			CertificateIDs:       make([]string, 0),
+			DefaultCertificateID: "",
+			Config:               "",
 		}
 	}
 	frontendsMap := map[string]*config.FrontendService{}

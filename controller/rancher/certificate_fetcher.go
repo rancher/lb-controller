@@ -2,10 +2,6 @@ package rancher
 
 import (
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher-metadata/metadata"
-	"github.com/rancher/go-rancher/v2"
-	"github.com/rancher/lb-controller/config"
 	"io/ioutil"
 	"os"
 	"path"
@@ -13,6 +9,11 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
 )
 
 const (
@@ -96,17 +97,17 @@ func (fetcher *RCertificateFetcher) FetchCertificates(lbMeta *LBMetadata, isDefa
 		}
 	} else {
 		if !isDefaultCert {
-			for _, certName := range lbMeta.Certs {
-				cert, err := fetcher.FetchRancherCertificate(certName)
+			for _, certID := range lbMeta.CertificateIDs {
+				cert, err := fetcher.FetchRancherCertificate(certID)
 				if err != nil {
 					return nil, err
 				}
 				certs = append(certs, cert)
 			}
 		} else {
-			if lbMeta.DefaultCert != "" {
+			if lbMeta.DefaultCertificateID != "" {
 				var err error
-				defaultCert, err = fetcher.FetchRancherCertificate(lbMeta.DefaultCert)
+				defaultCert, err = fetcher.FetchRancherCertificate(lbMeta.DefaultCertificateID)
 				if err != nil {
 					return nil, err
 				}
@@ -120,24 +121,22 @@ func (fetcher *RCertificateFetcher) FetchCertificates(lbMeta *LBMetadata, isDefa
 	return certs, nil
 }
 
-func (fetcher *RCertificateFetcher) FetchRancherCertificate(certName string) (*config.Certificate, error) {
-	if certName == "" {
+func (fetcher *RCertificateFetcher) FetchRancherCertificate(certID string) (*config.Certificate, error) {
+	if certID == "" {
 		return nil, nil
 	}
 	opts := client.NewListOpts()
-	opts.Filters["name"] = certName
+	opts.Filters["id"] = certID
 	opts.Filters["removed_null"] = "1"
 
-	certs, err := fetcher.Client.Certificate.List(opts)
+	cert, err := fetcher.Client.Certificate.ById(certID)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get certificate by name [%s]. Error: %#v", certName, err)
+		return nil, fmt.Errorf("Coudln't get certificate by id [%s]. Error: %#v", certID, err)
 	}
-	var cert client.Certificate
-	var certWithChain string
-	if len(certs.Data) >= 1 {
-		cert = certs.Data[0]
-		certWithChain = fmt.Sprintf("%s\n%s", cert.Cert, cert.CertChain)
+	if cert == nil {
+		return nil, fmt.Errorf("Failed to fetch certificate by id [%s]", certID)
 	}
+	certWithChain := fmt.Sprintf("%s\n%s", cert.Cert, cert.CertChain)
 	return &config.Certificate{
 		Name: cert.Name,
 		Key:  cert.Key,
