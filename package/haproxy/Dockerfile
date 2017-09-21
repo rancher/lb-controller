@@ -40,6 +40,6 @@ RUN ln -sf /proc/1/fd/2 /var/log/haproxy/errors
 # So we do not write to the COW filesystem
 VOLUME /var/log/haproxy
 
-ENTRYPOINT ["/tini", "--"]
+ENTRYPOINT ["/tini", "-s", "--"]
 
 CMD ["lb-controller.sh", "--controller", "rancher", "--provider",  "haproxy"]
