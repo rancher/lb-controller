@@ -49,7 +49,7 @@ func main() {
 		lbControllerName = c.String("controller")
 		lbProviderName = c.String("provider")
 		metadataAddress = c.String("metadata-address")
-		lbc = controller.GetController(lbControllerName, fmt.Sprintf("http://%s/2015-12-19", metadataAddress))
+		lbc = controller.GetController(lbControllerName, fmt.Sprintf("http://%s/2017-04-22", metadataAddress))
 		if lbc == nil {
 			logrus.Fatalf("Unable to find controller by name %s", lbControllerName)
 		}
