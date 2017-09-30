@@ -315,14 +315,8 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			}
 		}
 
-		var pathUUID string
-		if rule.Region != "" {
-			pathUUID = fmt.Sprintf("%v_%s_%s_%s_%s", rule.SourcePort, rule.Region, rule.Environment, hostname, path)
-		} else if rule.Environment != "" {
-			pathUUID = fmt.Sprintf("%v_%s_%s_%s", rule.SourcePort, rule.Environment, hostname, path)
-		} else {
-			pathUUID = fmt.Sprintf("%v_%s_%s", rule.SourcePort, hostname, path)
-		}
+		pathUUID := fmt.Sprintf("%v_%s_%s", rule.SourcePort, hostname, path)
+
 		backend := allBe[pathUUID]
 
 		if backend != nil {
@@ -330,6 +324,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			for _, ep := range eps {
 				if _, ok := epMap[ep.IP]; !ok {
 					epMap[ep.IP] = ep.IP
+					ep.Weight = rule.Weight
 					backend.Endpoints = append(backend.Endpoints, ep)
 				}
 			}
@@ -355,6 +350,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			epMap := make(map[string]string)
 			for _, ep := range eps {
 				epMap[ep.IP] = ep.IP
+				ep.Weight = rule.Weight
 			}
 			allEps[pathUUID] = epMap
 		}
@@ -490,6 +486,7 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 						Service:     svcName,
 						TargetPort:  rule.TargetPort,
 						BackendName: rule.BackendName,
+						Weight:      lbRule.Weight,
 					}
 					rules = append(rules, port)
 				}
@@ -504,6 +501,7 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 					Service:     svcName,
 					TargetPort:  lbRule.TargetPort,
 					BackendName: lbRule.BackendName,
+					Weight:      lbRule.Weight,
 				}
 				rules = append(rules, port)
 			}
@@ -552,6 +550,7 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 						BackendName: rule.BackendName,
 						Region:      lbRule.Region,
 						Environment: lbRule.Environment,
+						Weight:      lbRule.Weight,
 					}
 					rules = append(rules, port)
 				}
@@ -568,6 +567,7 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 					BackendName: lbRule.BackendName,
 					Region:      lbRule.Region,
 					Environment: lbRule.Environment,
+					Weight:      lbRule.Weight,
 				}
 				rules = append(rules, port)
 			}

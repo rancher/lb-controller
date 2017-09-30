@@ -113,7 +113,7 @@ type PortRule struct {
 	Container   string `json:"container"`
 	Region      string `json:"region"`
 	Environment string `json:"environment"`
-	Weight      string `json:"weight"`
+	Weight      int    `json:"weight"`
 }
 
 type LBConfig struct {

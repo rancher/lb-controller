@@ -66,6 +66,7 @@ type Endpoint struct {
 	Port    int
 	Config  string
 	IsCname bool
+	Weight  int
 }
 
 type FrontendService struct {

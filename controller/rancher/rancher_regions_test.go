@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
@@ -42,6 +41,7 @@ func TestSelectorMatch1(t *testing.T) {
 		Region:      "region2",
 		Environment: "alpha",
 		TargetPort:  80,
+		Weight:      100,
 	}
 	portRules = append(portRules, port)
 
@@ -51,6 +51,7 @@ func TestSelectorMatch1(t *testing.T) {
 		Selector:    "foo=bar",
 		Environment: "bar",
 		TargetPort:  80,
+		Weight:      20,
 	}
 	portRules = append(portRules, port)
 
@@ -67,7 +68,7 @@ func TestSelectorMatch1(t *testing.T) {
 		t.Fatal("No backends are configured for selector based service")
 	}
 
-	if len(fe.BackendServices) != 2 {
+	if len(fe.BackendServices) != 1 {
 		t.Fatalf("Incorrect number of backend services %v", len(fe.BackendServices))
 	}
 
@@ -79,6 +80,19 @@ func TestSelectorMatch1(t *testing.T) {
 
 	if be.Port != 80 {
 		t.Fatalf("Port is incorrect %v", be.Port)
+	}
+
+	if len(be.Endpoints) != 3 {
+		t.Fatalf("Incorrect number of endpoints %v", len(be.Endpoints))
+	}
+
+	for _, ep := range be.Endpoints {
+		if ep.IP == "173.17.0.19" && ep.Weight != 100 {
+			t.Fatalf("Weight is incorrect %v", ep.Weight)
+		}
+		if ep.IP == "172.17.0.8" && ep.Weight != 20 {
+			t.Fatalf("Weight is incorrect %v", ep.Weight)
+		}
 	}
 }
 
@@ -174,8 +188,8 @@ func (mf sMetaFetcher) GetServicesByRegionEnvironment(regionName string, envName
 
 func (mf sMetaFetcher) GetServicesByEnvironment(envName string) ([]metadata.Service, error) {
 	var svcs []metadata.Service
+	var containers []metadata.Container
 	if envName == "bar" {
-		var containers []metadata.Container
 		c3 := metadata.Container{
 			Name:            "client_container",
 			StackName:       "stackC",
@@ -258,8 +272,9 @@ func (mf sMetaFetcher) GetServiceByRegionEnvironment(regionName string, envName 
 }
 
 func (mf sMetaFetcher) GetServiceByEnvironment(envName string, stackName string, svcName string) (metadata.Service, error) {
+	var containers []metadata.Container
+	var service metadata.Service
 	if envName == "bar" && stackName == "stackC" && svcName == "drone" {
-		var containers []metadata.Container
 		c3 := metadata.Container{
 			Name:            "client_container",
 			StackName:       "stackC",
@@ -271,7 +286,7 @@ func (mf sMetaFetcher) GetServiceByEnvironment(envName string, stackName string,
 		containers = []metadata.Container{c3}
 		labels := make(map[string]string)
 		labels["foo"] = "bar"
-		service := metadata.Service{
+		service = metadata.Service{
 			Name:            "drone",
 			Kind:            "service",
 			StackName:       "stackC",
@@ -279,10 +294,32 @@ func (mf sMetaFetcher) GetServiceByEnvironment(envName string, stackName string,
 			Containers:      containers,
 			Labels:          labels,
 		}
-		logrus.Info("returning right service")
-		return service, nil
+	} else if envName == "foo" && stackName == "stackB" && svcName == "svcB" {
+		c1 := metadata.Container{
+			Name:            "client_container",
+			StackName:       "stackB",
+			ServiceName:     "svcB",
+			EnvironmentUUID: "foo",
+			PrimaryIp:       "172.17.0.9",
+			State:           "running",
+		}
+		c2 := metadata.Container{
+			Name:            "client_container",
+			StackName:       "stackB",
+			ServiceName:     "svcB",
+			EnvironmentUUID: "foo",
+			PrimaryIp:       "172.17.0.10",
+			State:           "running",
+		}
+		containers = []metadata.Container{c1, c2}
+		service = metadata.Service{
+			Name:            "svcB",
+			Kind:            "service",
+			StackName:       "stackB",
+			EnvironmentUUID: "foo",
+			Containers:      containers,
+		}
 	}
-	var service metadata.Service
 	return service, nil
 }
 
@@ -294,8 +331,6 @@ func (mf sMetaFetcher) GetService(link string) (*metadata.Service, error) {
 	regionName = strings.TrimSuffix(regionName, "\"")
 	regionName = strings.TrimPrefix(regionName, "\"")
 
-	logrus.Info("Get service .. ", splitSvcName)
-
 	if len(splitSvcName) == 4 {
 		if splitSvcName[0] == regionName {
 			linkedService, err = mf.GetServiceByEnvironment(splitSvcName[1], splitSvcName[2], splitSvcName[3])
@@ -304,8 +339,6 @@ func (mf sMetaFetcher) GetService(link string) (*metadata.Service, error) {
 		}
 	} else if len(splitSvcName) == 3 {
 		linkedService, err = mf.GetServiceByEnvironment(splitSvcName[0], splitSvcName[1], splitSvcName[2])
-		logrus.Info("found service")
-		logrus.Info(linkedService.Name)
 	} else {
 		linkedService, err = mf.GetServiceByName(splitSvcName[0], splitSvcName[1])
 	}

@@ -2,12 +2,13 @@ package haproxy
 
 import (
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/rancher/lb-controller/config"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/lb-controller/config"
 )
 
 var lbp Provider
