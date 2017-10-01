@@ -54,6 +54,7 @@ type Container struct {
 	ServiceName              string            `json:"service_name"`
 	ServiceIndex             string            `json:"service_index"`
 	StackName                string            `json:"stack_name"`
+	StackUUID                string            `json:"stack_uuid"`
 	Labels                   map[string]string `json:"labels"`
 	CreateIndex              int               `json:"create_index"`
 	HostUUID                 string            `json:"host_uuid"`
@@ -78,6 +79,7 @@ type Container struct {
 type Network struct {
 	Name                string                 `json:"name"`
 	UUID                string                 `json:"uuid"`
+	EnvironmentUUID     string                 `json:"environment_uuid"`
 	Metadata            map[string]interface{} `json:"metadata"`
 	HostPorts           bool                   `json:"host_ports"`
 	Default             bool                   `json:"is_default"`
@@ -109,6 +111,9 @@ type PortRule struct {
 	BackendName string `json:"backend_name"`
 	Selector    string `json:"selector"`
 	Container   string `json:"container"`
+	Region      string `json:"region"`
+	Environment string `json:"environment"`
+	Weight      string `json:"weight"`
 }
 
 type LBConfig struct {
@@ -145,4 +150,20 @@ type NetworkPolicyRule struct {
 	Within  string                    `yaml:"within"`
 	Between *NetworkPolicyRuleBetween `yaml:"between"`
 	Action  string                    `yaml:"action"`
+}
+
+type Region struct {
+	Name string `json:"region_name"`
+}
+
+type Environment struct {
+	Containers []Container `json:"containers"`
+	Hosts      []Host      `json:"hosts"`
+	Name       string      `json:"name"`
+	Networks   []Network   `json:"networks"`
+	RegionName string      `json:"region_name"`
+	Services   []Service   `json:"services"`
+	Stacks     []Stack     `json:"stacks"`
+	UUID       string      `json:"uuid"`
+	Version    string      `json:"version"`
 }
