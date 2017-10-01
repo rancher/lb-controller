@@ -3,17 +3,18 @@ package rancher
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/event-subscriber/locks"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type PublicEndpoint struct {
@@ -126,11 +127,7 @@ func (lbp *LBProvider) ApplyConfig(lbConfig *config.LoadBalancerConfig) error {
 	}
 
 	// 2.update lb (if needed)
-	if err = lbp.updateRancherLBService(lbConfig, lb); err != nil {
-		return err
-	}
-
-	return nil
+	return lbp.updateRancherLBService(lbConfig, lb)
 }
 
 func (lbp *LBProvider) CleanupConfig(name string) error {
@@ -274,10 +271,7 @@ func convertObject(obj1 interface{}, obj2 interface{}) error {
 		return err
 	}
 
-	if err := json.Unmarshal(b, obj2); err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(b, obj2)
 }
 
 type waitCallback func(result chan<- interface{}) (bool, error)

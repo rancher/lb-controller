@@ -1,12 +1,13 @@
 package rancher
 
 import (
+	"strings"
+	"testing"
+
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	utils "github.com/rancher/lb-controller/utils"
-	"strings"
-	"testing"
 )
 
 var lbc *LoadBalancerController
@@ -548,8 +549,14 @@ func (mf tMetaFetcher) GetContainer(envUUID string, containerName string) (*meta
 	return nil, nil
 }
 
-func (mf tMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {
+func (mf tMetaFetcher) GetRegionName() (string, error) {
+	return "", nil
+}
+
+func (mf tMetaFetcher) GetService(link string) (*metadata.Service, error) {
 	var svc *metadata.Service
+	splitSvcName := strings.Split(link, "/")
+	svcName := splitSvcName[1]
 	if strings.EqualFold(svcName, "foo") {
 		svc = &metadata.Service{
 			Kind:       "service",
@@ -720,6 +727,31 @@ func (mf tMetaFetcher) GetSelfHostUUID() (string, error) {
 }
 
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
+}
+
+func (mf tMetaFetcher) GetServicesByRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
+	var svcs []metadata.Service
+	return svcs, nil
+}
+
+func (mf tMetaFetcher) GetServicesByEnvironment(envName string) ([]metadata.Service, error) {
+	var svcs []metadata.Service
+	return svcs, nil
+}
+
+func (mf tMetaFetcher) GetServiceByRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
+	var svc metadata.Service
+	return svc, nil
+}
+
+func (mf tMetaFetcher) GetServiceByEnvironment(envName string, stackName string, svcName string) (metadata.Service, error) {
+	var svc metadata.Service
+	return svc, nil
+}
+
+func (mf tMetaFetcher) GetServiceByName(stackName string, svcName string) (metadata.Service, error) {
+	var svc metadata.Service
+	return svc, nil
 }
 
 func (cf tCertFetcher) FetchCertificates(lbMeta *LBMetadata, isDefaultCert bool) ([]*config.Certificate, error) {
