@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -20,10 +21,17 @@ func init() {
 		Template:  "test_data/haproxy_template.cfg",
 		CertDir:   "/etc/haproxy/certs",
 	}
+	dm := &drainMgr{
+		drainList:   make(map[string]string),
+		mu:          &sync.RWMutex{},
+		haproxySock: "/var/run/haproxy.sock",
+	}
+	dm.drainList["drainedS1"] = ""
 	lbp = Provider{
-		cfg:    haproxyCfg,
-		stopCh: make(chan struct{}),
-		init:   true,
+		cfg:      haproxyCfg,
+		stopCh:   make(chan struct{}),
+		init:     true,
+		drainMgr: dm,
 	}
 }
 
@@ -618,5 +626,53 @@ func TestHaproxyConfigWriteDefaultCertWithSpace(t *testing.T) {
 	//make sure the cfg file has default cert mentioned and spaces escaped
 	if !strings.Contains(cfgFile, "ssl crt /etc/haproxy/certs/current/my\\ default\\ certificate.pem ssl crt /etc/haproxy/certs/current") {
 		t.Fatalf("Error validating default cert presence in haproxy config")
+	}
+}
+
+func TestBuildCustomConfigBackendServerWeight(t *testing.T) {
+	customConfig, err := getCustomConfig("custom_config_backend_server")
+	if err != nil {
+		t.Fatalf("Failed to read custom config: %v", err)
+	}
+	backends := []*config.BackendService{}
+	var eps1 config.Endpoints
+	ep1 := &config.Endpoint{
+		Name: "drainedS1",
+		IP:   "10.1.1.17",
+		Port: 90,
+	}
+	eps1 = append(eps1, ep1)
+	backend := &config.BackendService{
+		UUID:      "foo",
+		Port:      8080,
+		Protocol:  config.HTTPProto,
+		Endpoints: eps1,
+	}
+	backends = append(backends, backend)
+
+	frontends := []*config.FrontendService{}
+	frontend := &config.FrontendService{
+		Name:            "foo",
+		Port:            80,
+		Protocol:        config.HTTPProto,
+		BackendServices: backends,
+	}
+	frontends = append(frontends, frontend)
+
+	lbConfig := &config.LoadBalancerConfig{
+		FrontendServices: frontends,
+	}
+	err = lbp.ProcessCustomConfig(lbConfig, customConfig)
+	if err != nil {
+		t.Fatalf("Error while process custom config: %v", err)
+	}
+
+	result, err := validateCustomConfig("custom_config_server_weight_resp", lbConfig.FrontendServices[0].BackendServices[0].Endpoints[0].Config)
+	if err != nil {
+		t.Fatalf("Error validating custom config: %v", err)
+	}
+
+	if !result {
+		t.Fatal("Configs don't match")
 	}
 }

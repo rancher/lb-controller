@@ -21,7 +21,9 @@ var (
 )
 
 func init() {
-	//logrus.SetLevel(logrus.DebugLevel)
+	if os.Getenv("RANCHER_DEBUG") == "true" {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 	logrus.SetOutput(os.Stdout)
 }
 
