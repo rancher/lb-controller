@@ -264,6 +264,10 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 
 		var eps config.Endpoints
 		var hc *config.HealthCheck
+		log := logrus.New()
+		log.Out = os.Stdout
+		log.Infof("rule.Service %v", rule.Service)
+
 		if rule.Service != "" {
 			service, err := lbc.MetaFetcher.GetService(rule.Service)
 			if err != nil {
@@ -317,6 +321,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 
 		pathUUID := fmt.Sprintf("%v_%s_%s", rule.SourcePort, hostname, path)
 
+		log.Infof("pathUUID %v", pathUUID)
 		backend := allBe[pathUUID]
 
 		if backend != nil {
@@ -351,6 +356,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			for _, ep := range eps {
 				epMap[ep.IP] = ep.IP
 				ep.Weight = rule.Weight
+				log.Infof("assigning ep weight.. %v .. %v ..", ep.IP, ep.Weight)
 			}
 			allEps[pathUUID] = epMap
 		}
@@ -441,17 +447,22 @@ func (lbc *LoadBalancerController) CollectLBMetadata(lbSvc metadata.Service) (*L
 func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 	//collect selector based services
 	var rules []metadata.PortRule
+	log1 := logrus.New()
+	log1.Out = os.Stdout
 	svcs, err := lbc.MetaFetcher.GetServices()
 	if err != nil {
 		return err
 	}
 
 	regionName, err := lbc.MetaFetcher.GetRegionName()
+	log1.Info("region Name %v", regionName)
 	if err != nil {
 		regionName = ""
 	}
 	regionName = strings.TrimSuffix(regionName, "\"")
 	regionName = strings.TrimPrefix(regionName, "\"")
+
+	log1.Info("get length of portRules %v", len(lbMeta.PortRules))
 
 	for _, lbRule := range lbMeta.PortRules {
 		if lbRule.Selector == "" {
@@ -509,16 +520,24 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 		}
 
 		var externalsvcs []metadata.Service
+		log1.Infof("region name %v", lbRule.Region)
+		log1.Infof("local region name %v", regionName)
+		log1.Infof("environment name %v", lbRule.Environment)
 		if lbRule.Region != "" {
-			if lbRule.Environment != "" {
-				externalsvcs, err = lbc.MetaFetcher.GetServicesByRegionEnvironment(lbRule.Region, lbRule.Environment)
-			} else if lbRule.Region == regionName {
+			if lbRule.Region == regionName {
+				log1.Info("getting services by environment")
 				externalsvcs, err = lbc.MetaFetcher.GetServicesByEnvironment(lbRule.Environment)
+			} else if lbRule.Environment != "" {
+				externalsvcs, err = lbc.MetaFetcher.GetServicesByRegionEnvironment(lbRule.Region, lbRule.Environment)
 			}
 		} else if lbRule.Environment != "" {
 			externalsvcs, err = lbc.MetaFetcher.GetServicesByEnvironment(lbRule.Environment)
 		}
+		log1.Info("info after fetched services")
+		log1.Infof("length %v", len(externalsvcs))
 		for _, svc := range externalsvcs {
+			log1.Infof("service name %v", svc.Name)
+			log1.Infof("service labels %v", svc.Labels)
 			if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
 				continue
 			}
