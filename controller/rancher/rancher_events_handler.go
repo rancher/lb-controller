@@ -37,8 +37,18 @@ func (ehandler *REventsHandler) Subscribe() error {
 	if err != nil {
 		return err
 	}
-	err = router.StartWithoutCreate(nil)
-	return err
+
+	go func() {
+		sp := revents.SkippingWorkerPool(250, nil)
+		for {
+			if err := router.RunWithWorkerPool(sp); err != nil {
+				logrus.Errorf("Exiting subscriber: %v", err)
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+
+	return nil
 }
 
 func (ehandler *REventsHandler) handle(event *revents.Event, cli *client.RancherClient) error {
@@ -82,7 +92,7 @@ func (ehandler *REventsHandler) PublishReply(reply *client.Publish, apiClient *c
 
 func (ehandler *REventsHandler) CreateAndPublishReply(event *revents.Event, cli *client.RancherClient) error {
 	reply := ehandler.NewReply(event)
-	logrus.Infof("New reply created to the event: %#v", reply)
+	logrus.Infof("New reply: %#v created to the event: %#v", reply, event)
 
 	if reply.Name == "" {
 		return nil
@@ -112,7 +122,7 @@ func (ehandler *REventsHandler) HandleDrainEvent(event *revents.Event, cli *clie
 
 	//form the endpoint from the eventVO
 
-	logrus.Infof("Received target.drain IP: %v, drainTimeout: %v", event.Data["targetIPaddress"], event.Data["drainTimeout"])
+	logrus.Infof("Received target.drain IP: %v, drainTimeout: %v, eventID: %v, resourceID %v", event.Data["targetIPaddress"], event.Data["drainTimeout"], event.ID, event.ResourceID)
 
 	primaryIP, ok := event.Data["targetIPaddress"]
 
