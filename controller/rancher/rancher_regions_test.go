@@ -1,6 +1,7 @@
 package rancher
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -62,6 +63,9 @@ func TestSelectorMatch1(t *testing.T) {
 	lbc1.processSelector(meta)
 
 	configs, _ := lbc1.BuildConfigFromMetadata("test", "", "", "any", meta)
+
+	ans, _ := json.Marshal(configs)
+	t.Log(string(ans))
 
 	fe := configs[0].FrontendServices[0]
 	if len(fe.BackendServices) == 0 {
@@ -132,7 +136,7 @@ func (mf sMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return svcs, nil
 }
 
-func (mf sMetaFetcher) GetServicesByRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
+func (mf sMetaFetcher) GetServicesFromRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
 	var svcs []metadata.Service
 	var containers []metadata.Container
 	var service1 metadata.Service
@@ -181,15 +185,8 @@ func (mf sMetaFetcher) GetServicesByRegionEnvironment(regionName string, envName
 			EnvironmentUUID: "alpha",
 			Containers:      containers,
 		}
-	}
-	svcs = []metadata.Service{service1, service2}
-	return svcs, nil
-}
-
-func (mf sMetaFetcher) GetServicesByEnvironment(envName string) ([]metadata.Service, error) {
-	var svcs []metadata.Service
-	var containers []metadata.Container
-	if envName == "bar" {
+		svcs = []metadata.Service{service1, service2}
+	} else if regionName == "region1" && envName == "bar" {
 		c3 := metadata.Container{
 			Name:            "client_container",
 			StackName:       "stackC",
@@ -214,12 +211,21 @@ func (mf sMetaFetcher) GetServicesByEnvironment(envName string) ([]metadata.Serv
 	return svcs, nil
 }
 
-func (mf sMetaFetcher) GetServiceByName(svcName string, stackName string) (metadata.Service, error) {
+func (mf sMetaFetcher) GetServicesInLocalRegion(envName string) ([]metadata.Service, error) {
+	var svcs []metadata.Service
+	regionName, err := mf.GetRegionName()
+	if err != nil {
+		return svcs, err
+	}
+	return mf.GetServicesFromRegionEnvironment(regionName, envName)
+}
+
+func (mf sMetaFetcher) GetServiceInLocalEnvironment(svcName string, stackName string) (metadata.Service, error) {
 	var svc metadata.Service
 	return svc, nil
 }
 
-func (mf sMetaFetcher) GetServiceByRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
+func (mf sMetaFetcher) GetServiceFromRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
 	var service metadata.Service
 	var containers []metadata.Container
 	if regionName == "region2" && envName == "alpha" && stackName == "stackX" && svcName == "svcX" {
@@ -267,80 +273,76 @@ func (mf sMetaFetcher) GetServiceByRegionEnvironment(regionName string, envName 
 			EnvironmentUUID: "alpha",
 			Containers:      containers,
 		}
+	} else if regionName == "region1" {
+		if envName == "bar" && stackName == "stackC" && svcName == "drone" {
+			c3 := metadata.Container{
+				Name:            "client_container",
+				StackName:       "stackC",
+				ServiceName:     "drone",
+				EnvironmentUUID: "bar",
+				PrimaryIp:       "172.17.0.8",
+				State:           "running",
+			}
+			containers = []metadata.Container{c3}
+			labels := make(map[string]string)
+			labels["foo"] = "bar"
+			service = metadata.Service{
+				Name:            "drone",
+				Kind:            "service",
+				StackName:       "stackC",
+				EnvironmentUUID: "bar",
+				Containers:      containers,
+				Labels:          labels,
+			}
+		} else if envName == "foo" && stackName == "stackB" && svcName == "svcB" {
+			c1 := metadata.Container{
+				Name:            "client_container",
+				StackName:       "stackB",
+				ServiceName:     "svcB",
+				EnvironmentUUID: "foo",
+				PrimaryIp:       "172.17.0.9",
+				State:           "running",
+			}
+			c2 := metadata.Container{
+				Name:            "client_container",
+				StackName:       "stackB",
+				ServiceName:     "svcB",
+				EnvironmentUUID: "foo",
+				PrimaryIp:       "172.17.0.10",
+				State:           "running",
+			}
+			containers = []metadata.Container{c1, c2}
+			service = metadata.Service{
+				Name:            "svcB",
+				Kind:            "service",
+				StackName:       "stackB",
+				EnvironmentUUID: "foo",
+				Containers:      containers,
+			}
+		}
 	}
 	return service, nil
 }
 
-func (mf sMetaFetcher) GetServiceByEnvironment(envName string, stackName string, svcName string) (metadata.Service, error) {
-	var containers []metadata.Container
+func (mf sMetaFetcher) GetServiceInLocalRegion(envName string, stackName string, svcName string) (metadata.Service, error) {
 	var service metadata.Service
-	if envName == "bar" && stackName == "stackC" && svcName == "drone" {
-		c3 := metadata.Container{
-			Name:            "client_container",
-			StackName:       "stackC",
-			ServiceName:     "drone",
-			EnvironmentUUID: "bar",
-			PrimaryIp:       "172.17.0.8",
-			State:           "running",
-		}
-		containers = []metadata.Container{c3}
-		labels := make(map[string]string)
-		labels["foo"] = "bar"
-		service = metadata.Service{
-			Name:            "drone",
-			Kind:            "service",
-			StackName:       "stackC",
-			EnvironmentUUID: "bar",
-			Containers:      containers,
-			Labels:          labels,
-		}
-	} else if envName == "foo" && stackName == "stackB" && svcName == "svcB" {
-		c1 := metadata.Container{
-			Name:            "client_container",
-			StackName:       "stackB",
-			ServiceName:     "svcB",
-			EnvironmentUUID: "foo",
-			PrimaryIp:       "172.17.0.9",
-			State:           "running",
-		}
-		c2 := metadata.Container{
-			Name:            "client_container",
-			StackName:       "stackB",
-			ServiceName:     "svcB",
-			EnvironmentUUID: "foo",
-			PrimaryIp:       "172.17.0.10",
-			State:           "running",
-		}
-		containers = []metadata.Container{c1, c2}
-		service = metadata.Service{
-			Name:            "svcB",
-			Kind:            "service",
-			StackName:       "stackB",
-			EnvironmentUUID: "foo",
-			Containers:      containers,
-		}
+	regionName, err := mf.GetRegionName()
+	if err != nil {
+		return service, err
 	}
-	return service, nil
+	return mf.GetServiceFromRegionEnvironment(regionName, envName, stackName, svcName)
 }
 
 func (mf sMetaFetcher) GetService(link string) (*metadata.Service, error) {
 	splitSvcName := strings.Split(link, "/")
 	var linkedService metadata.Service
-
-	regionName, err := mf.GetRegionName()
-	regionName = strings.TrimSuffix(regionName, "\"")
-	regionName = strings.TrimPrefix(regionName, "\"")
-
+	var err error
 	if len(splitSvcName) == 4 {
-		if splitSvcName[0] == regionName {
-			linkedService, err = mf.GetServiceByEnvironment(splitSvcName[1], splitSvcName[2], splitSvcName[3])
-		} else {
-			linkedService, err = mf.GetServiceByRegionEnvironment(splitSvcName[0], splitSvcName[1], splitSvcName[2], splitSvcName[3])
-		}
+		linkedService, err = mf.GetServiceFromRegionEnvironment(splitSvcName[0], splitSvcName[1], splitSvcName[2], splitSvcName[3])
 	} else if len(splitSvcName) == 3 {
-		linkedService, err = mf.GetServiceByEnvironment(splitSvcName[0], splitSvcName[1], splitSvcName[2])
+		linkedService, err = mf.GetServiceInLocalRegion(splitSvcName[0], splitSvcName[1], splitSvcName[2])
 	} else {
-		linkedService, err = mf.GetServiceByName(splitSvcName[0], splitSvcName[1])
+		linkedService, err = mf.GetServiceInLocalEnvironment(splitSvcName[0], splitSvcName[1])
 	}
 	return &linkedService, err
 }

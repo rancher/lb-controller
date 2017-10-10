@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
 	"github.com/urfave/cli"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 var (
@@ -49,7 +50,7 @@ func main() {
 		lbControllerName = c.String("controller")
 		lbProviderName = c.String("provider")
 		metadataAddress = c.String("metadata-address")
-		lbc = controller.GetController(lbControllerName, fmt.Sprintf("http://%s/2015-12-19", metadataAddress))
+		lbc = controller.GetController(lbControllerName, fmt.Sprintf("http://%s/2016-07-29", metadataAddress))
 		if lbc == nil {
 			logrus.Fatalf("Unable to find controller by name %s", lbControllerName)
 		}

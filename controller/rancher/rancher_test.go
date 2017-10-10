@@ -729,27 +729,27 @@ func (mf tMetaFetcher) GetSelfHostUUID() (string, error) {
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 }
 
-func (mf tMetaFetcher) GetServicesByRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
+func (mf tMetaFetcher) GetServicesFromRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
 	var svcs []metadata.Service
 	return svcs, nil
 }
 
-func (mf tMetaFetcher) GetServicesByEnvironment(envName string) ([]metadata.Service, error) {
+func (mf tMetaFetcher) GetServicesInLocalRegion(envName string) ([]metadata.Service, error) {
 	var svcs []metadata.Service
 	return svcs, nil
 }
 
-func (mf tMetaFetcher) GetServiceByRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
+func (mf tMetaFetcher) GetServiceFromRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
 	var svc metadata.Service
 	return svc, nil
 }
 
-func (mf tMetaFetcher) GetServiceByEnvironment(envName string, stackName string, svcName string) (metadata.Service, error) {
+func (mf tMetaFetcher) GetServiceInLocalRegion(envName string, stackName string, svcName string) (metadata.Service, error) {
 	var svc metadata.Service
 	return svc, nil
 }
 
-func (mf tMetaFetcher) GetServiceByName(stackName string, svcName string) (metadata.Service, error) {
+func (mf tMetaFetcher) GetServiceInLocalEnvironment(stackName string, svcName string) (metadata.Service, error) {
 	var svc metadata.Service
 	return svc, nil
 }
