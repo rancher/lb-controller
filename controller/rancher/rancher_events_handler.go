@@ -42,7 +42,7 @@ func (ehandler *REventsHandler) Subscribe() error {
 		sp := revents.SkippingWorkerPool(250, nil)
 		for {
 			if err := router.RunWithWorkerPool(sp); err != nil {
-				logrus.Errorf("Exiting subscriber: %v", err)
+				logrus.Debugf("Exiting subscriber: %v", err)
 			}
 			time.Sleep(time.Second)
 		}
