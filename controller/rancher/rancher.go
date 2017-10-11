@@ -4,6 +4,14 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	revents "github.com/rancher/event-subscriber/events"
 	"github.com/rancher/go-rancher-metadata/metadata"
@@ -12,13 +20,14 @@ import (
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
-	"os"
-	"regexp"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/controller"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
 )
 
 func init() {
@@ -160,11 +169,17 @@ type LoadBalancerController struct {
 
 type MetadataFetcher interface {
 	GetSelfService() (metadata.Service, error)
-	GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error)
+	GetService(link string) (*metadata.Service, error)
 	OnChange(intervalSeconds int, do func(string))
 	GetServices() ([]metadata.Service, error)
 	GetSelfHostUUID() (string, error)
 	GetContainer(envUUID string, instanceName string) (*metadata.Container, error)
+	GetRegionName() (string, error)
+	GetServiceFromRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error)
+	GetServiceInLocalRegion(envName string, stackName string, svcName string) (metadata.Service, error)
+	GetServiceInLocalEnvironment(stackName string, svcName string) (metadata.Service, error)
+	GetServicesFromRegionEnvironment(regionName string, envName string) ([]metadata.Service, error)
+	GetServicesInLocalRegion(envName string) ([]metadata.Service, error)
 }
 
 type RMetaFetcher struct {
@@ -202,6 +217,14 @@ func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
 
 func (mf RMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
 	mf.MetadataClient.OnChange(intervalSeconds, do)
+}
+
+func (mf RMetaFetcher) GetServicesInLocalRegion(envName string) ([]metadata.Service, error) {
+	return mf.MetadataClient.GetServicesInLocalRegion(envName)
+}
+
+func (mf RMetaFetcher) GetServicesFromRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
+	return mf.MetadataClient.GetServicesFromRegionEnvironment(regionName, envName)
 }
 
 func (lbc *LoadBalancerController) ScheduleApplyConfig(string) {
@@ -285,6 +308,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 	if err != nil {
 		return nil, err
 	}
+	logrus.Info("length of lbMeta.PortRules  ", len(lbMeta.PortRules))
 	for _, rule := range lbMeta.PortRules {
 		if rule.SourcePort < 1 {
 			continue
@@ -305,11 +329,9 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 
 		var eps config.Endpoints
 		var hc *config.HealthCheck
+		logrus.Info("rule.Service ", rule.Service)
 		if rule.Service != "" {
-			// service comes in a format of stackName/serviceName,
-			// replace "/"" with "_"
-			svcName := strings.SplitN(rule.Service, "/", 2)
-			service, err := lbc.MetaFetcher.GetService(envUUID, svcName[1], svcName[0])
+			service, err := lbc.MetaFetcher.GetService(rule.Service)
 			if err != nil {
 				return nil, err
 			}
@@ -360,11 +382,13 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 
 		pathUUID := fmt.Sprintf("%v_%s_%s", rule.SourcePort, hostname, path)
 		backend := allBe[pathUUID]
+		logrus.Info("pathUUID ", pathUUID)
 		if backend != nil {
 			epMap := allEps[pathUUID]
 			for _, ep := range eps {
 				if _, ok := epMap[ep.IP]; !ok {
 					epMap[ep.IP] = ep.IP
+					ep.Weight = rule.Weight
 					backend.Endpoints = append(backend.Endpoints, ep)
 				}
 			}
@@ -390,6 +414,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			epMap := make(map[string]string)
 			for _, ep := range eps {
 				epMap[ep.IP] = ep.IP
+				ep.Weight = rule.Weight
 			}
 			allEps[pathUUID] = epMap
 		}
@@ -420,7 +445,6 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 	}
 
 	lbConfigs = append(lbConfigs, lbConfig)
-
 	return lbConfigs, nil
 }
 
@@ -462,6 +486,76 @@ func (lbc *LoadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 	}
 
 	return lbc.BuildConfigFromMetadata(lbSvc.Name, lbSvc.EnvironmentUUID, selfHostUUID, localServicePreference, lbMeta)
+}
+
+func (lbc *LoadBalancerController) AddRulesFromRegions(rules []metadata.PortRule, lbRule metadata.PortRule) ([]metadata.PortRule, error) {
+	var externalsvcs []metadata.Service
+	var err error
+	if lbRule.Region != "" {
+		if lbRule.Environment != "" {
+			externalsvcs, err = lbc.MetaFetcher.GetServicesFromRegionEnvironment(lbRule.Region, lbRule.Environment)
+		}
+	} else if lbRule.Environment != "" {
+		externalsvcs, err = lbc.MetaFetcher.GetServicesInLocalRegion(lbRule.Environment)
+	}
+	if err != nil {
+		return rules, err
+	}
+	for _, svc := range externalsvcs {
+		if !IsSelectorMatch(lbRule.Selector, svc.Labels) {
+			continue
+		}
+		lbConfig := svc.LBConfig
+		if len(lbConfig.PortRules) == 0 {
+			if lbRule.TargetPort == 0 {
+				continue
+			}
+		}
+		meta, err := GetLBMetadata(lbConfig)
+		if err != nil {
+			return rules, err
+		}
+		var svcName string
+		if lbRule.Region != "" {
+			svcName = fmt.Sprintf("%s/%s/%s/%s", lbRule.Region, lbRule.Environment, svc.StackName, svc.Name)
+		} else if lbRule.Environment != "" {
+			svcName = fmt.Sprintf("%s/%s/%s", lbRule.Environment, svc.StackName, svc.Name)
+		}
+		if len(meta.PortRules) > 0 {
+			for _, rule := range meta.PortRules {
+				port := metadata.PortRule{
+					SourcePort:  lbRule.SourcePort,
+					Protocol:    lbRule.Protocol,
+					Path:        rule.Path,
+					Hostname:    rule.Hostname,
+					Service:     svcName,
+					TargetPort:  rule.TargetPort,
+					BackendName: rule.BackendName,
+					Region:      lbRule.Region,
+					Environment: lbRule.Environment,
+					Weight:      lbRule.Weight,
+				}
+				rules = append(rules, port)
+			}
+		} else {
+			// register the service to the lb service port rule
+			// having target port is a requirement
+			port := metadata.PortRule{
+				SourcePort:  lbRule.SourcePort,
+				Protocol:    lbRule.Protocol,
+				Path:        lbRule.Path,
+				Hostname:    lbRule.Hostname,
+				Service:     svcName,
+				TargetPort:  lbRule.TargetPort,
+				BackendName: lbRule.BackendName,
+				Region:      lbRule.Region,
+				Environment: lbRule.Environment,
+				Weight:      lbRule.Weight,
+			}
+			rules = append(rules, port)
+		}
+	}
+	return rules, nil
 }
 
 func (lbc *LoadBalancerController) CollectLBMetadata(lbSvc metadata.Service) (*LBMetadata, error) {
@@ -519,6 +613,7 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 						Service:     svcName,
 						TargetPort:  rule.TargetPort,
 						BackendName: rule.BackendName,
+						Weight:      lbRule.Weight,
 					}
 					rules = append(rules, port)
 				}
@@ -533,10 +628,16 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 					Service:     svcName,
 					TargetPort:  lbRule.TargetPort,
 					BackendName: lbRule.BackendName,
+					Weight:      lbRule.Weight,
 				}
 				rules = append(rules, port)
 			}
 
+		}
+		var err error
+		rules, err = lbc.AddRulesFromRegions(rules, lbRule)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -562,6 +663,22 @@ func (mf RMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return mf.MetadataClient.GetServices()
 }
 
+func (mf RMetaFetcher) GetRegionName() (string, error) {
+	return mf.MetadataClient.GetRegionName()
+}
+
+func (mf RMetaFetcher) GetServiceFromRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
+	return mf.MetadataClient.GetServiceFromRegionEnvironment(regionName, envName, stackName, svcName)
+}
+
+func (mf RMetaFetcher) GetServiceInLocalRegion(envName string, stackName string, svcName string) (metadata.Service, error) {
+	return mf.MetadataClient.GetServiceInLocalRegion(envName, stackName, svcName)
+}
+
+func (mf RMetaFetcher) GetServiceInLocalEnvironment(stackName string, svcName string) (metadata.Service, error) {
+	return mf.MetadataClient.GetServiceInLocalEnvironment(stackName, svcName)
+}
+
 func IsActiveService(svc *metadata.Service) bool {
 	inactiveStates := []string{"inactive", "deactivating", "removed", "removing"}
 	for _, state := range inactiveStates {
@@ -572,23 +689,19 @@ func IsActiveService(svc *metadata.Service) bool {
 	return true
 }
 
-func (mf RMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {
-	svcs, err := mf.MetadataClient.GetServices()
-	if err != nil {
-		return nil, err
+func (mf RMetaFetcher) GetService(link string) (*metadata.Service, error) {
+	splitSvcName := strings.Split(link, "/")
+	var linkedService metadata.Service
+	var err error
+
+	if len(splitSvcName) == 4 {
+		linkedService, err = mf.GetServiceFromRegionEnvironment(splitSvcName[0], splitSvcName[1], splitSvcName[2], splitSvcName[3])
+	} else if len(splitSvcName) == 3 {
+		linkedService, err = mf.GetServiceInLocalRegion(splitSvcName[0], splitSvcName[1], splitSvcName[2])
+	} else {
+		linkedService, err = mf.GetServiceInLocalEnvironment(splitSvcName[0], splitSvcName[1])
 	}
-	var service metadata.Service
-	for _, svc := range svcs {
-		//only consider services from the same environment
-		if !strings.EqualFold(svc.EnvironmentUUID, envUUID) {
-			continue
-		}
-		if strings.EqualFold(svc.Name, svcName) && strings.EqualFold(svc.StackName, stackName) {
-			service = svc
-			break
-		}
-	}
-	return &service, nil
+	return &linkedService, err
 }
 
 func (mf RMetaFetcher) GetContainer(envUUID string, containerName string) (*metadata.Container, error) {
@@ -632,8 +745,7 @@ func (lbc *LoadBalancerController) getServiceEndpoints(svc *metadata.Service, ta
 func (lbc *LoadBalancerController) getAliasServiceEndpoints(svc *metadata.Service, targetPort int, selfHostUUID, localServicePreference string) (config.Endpoints, error) {
 	var eps config.Endpoints
 	for link := range svc.Links {
-		svcName := strings.SplitN(link, "/", 2)
-		service, err := lbc.MetaFetcher.GetService(svc.EnvironmentUUID, svcName[1], svcName[0])
+		service, err := lbc.MetaFetcher.GetService(link)
 		if err != nil {
 			return nil, err
 		}

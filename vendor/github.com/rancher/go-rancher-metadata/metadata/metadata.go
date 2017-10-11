@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -13,13 +14,22 @@ type Client interface {
 	OnChange(int, func(string))
 	SendRequest(string) ([]byte, error)
 	GetVersion() (string, error)
+	GetRegionName() (string, error)
 	GetSelfHost() (Host, error)
 	GetSelfContainer() (Container, error)
 	GetSelfServiceByName(string) (Service, error)
 	GetSelfService() (Service, error)
 	GetSelfStack() (Stack, error)
+	GetServiceInLocalEnvironment(string, string) (Service, error)
+	GetServiceInLocalRegion(string, string, string) (Service, error)
+	GetServiceFromRegionEnvironment(string, string, string, string) (Service, error)
 	GetServices() ([]Service, error)
+	GetServicesInLocalRegion(string) ([]Service, error)
+	GetServicesFromRegionEnvironment(string, string) ([]Service, error)
+	GetServicesByEnvironmentUUID(string) ([]Service, error)
 	GetStacks() ([]Stack, error)
+	GetEnvironments() ([]Environment, error)
+	GetStackByName(string) (Stack, error)
 	GetContainers() ([]Container, error)
 	GetServiceContainers(string, string) ([]Container, error)
 	GetHosts() ([]Host, error)
@@ -94,6 +104,17 @@ func (m *client) GetVersion() (string, error) {
 	return string(resp[:]), nil
 }
 
+func (m *client) GetRegionName() (string, error) {
+	resp, err := m.SendRequest("/region_name")
+	if err != nil {
+		return "", err
+	}
+	regionName := string(resp[:])
+	regionName = strings.TrimSuffix(regionName, "\"")
+	regionName = strings.TrimPrefix(regionName, "\"")
+	return regionName, nil
+}
+
 func (m *client) GetSelfHost() (Host, error) {
 	resp, err := m.SendRequest("/self/host")
 	var host Host
@@ -164,6 +185,53 @@ func (m *client) GetSelfStack() (Stack, error) {
 	return stack, nil
 }
 
+func (m *client) GetServiceInLocalEnvironment(stackName string, svcName string) (Service, error) {
+	resp, err := m.SendRequest("/stacks/" + stackName + "/services/" + svcName)
+	var service Service
+	if err != nil {
+		return service, err
+	}
+
+	if err = json.Unmarshal(resp, &service); err != nil {
+		return service, err
+	}
+
+	return service, nil
+}
+
+func (m *client) GetServiceFromRegionEnvironment(regionName string, envName string, stackName string, svcName string) (Service, error) {
+	resp, err := m.SendRequest("/environments")
+	var service Service
+	if err != nil {
+		return service, err
+	}
+
+	var environments []Environment
+	if err = json.Unmarshal(resp, &environments); err != nil {
+		return service, err
+	}
+
+	for _, env := range environments {
+		if regionName == env.RegionName && envName == env.Name {
+			for _, svc := range env.Services {
+				if stackName == svc.StackName && svcName == svc.Name {
+					return svc, nil
+				}
+			}
+		}
+	}
+	return service, nil
+}
+
+func (m *client) GetServiceInLocalRegion(envName string, stackName string, svcName string) (Service, error) {
+	regionName, err := m.GetRegionName()
+	var service Service
+	if err != nil {
+		return service, err
+	}
+	return m.GetServiceFromRegionEnvironment(regionName, envName, stackName, svcName)
+}
+
 func (m *client) GetServices() ([]Service, error) {
 	resp, err := m.SendRequest("/services")
 	var services []Service
@@ -188,6 +256,72 @@ func (m *client) GetStacks() ([]Stack, error) {
 		return stacks, err
 	}
 	return stacks, nil
+}
+
+func (m *client) GetEnvironments() ([]Environment, error) {
+	var environments []Environment
+	resp, err := m.SendRequest("/environments")
+	if err != nil {
+		return environments, err
+	}
+	if err = json.Unmarshal(resp, &environments); err != nil {
+		return environments, err
+	}
+	return environments, nil
+}
+
+func (m *client) GetServicesFromRegionEnvironment(regionName string, envName string) ([]Service, error) {
+	environments, err := m.GetEnvironments()
+	var services []Service
+	if err != nil {
+		return services, err
+	}
+
+	for _, env := range environments {
+		if regionName == env.RegionName && envName == env.Name {
+			services = append(services, env.Services...)
+		}
+	}
+	return services, nil
+}
+
+func (m *client) GetServicesInLocalRegion(envName string) ([]Service, error) {
+	regionName, err := m.GetRegionName()
+	var services []Service
+	if err != nil {
+		return services, err
+	}
+	return m.GetServicesFromRegionEnvironment(regionName, envName)
+}
+
+func (m *client) GetStackByName(name string) (Stack, error) {
+	resp, err := m.SendRequest("/stacks/" + name)
+	var stack Stack
+	if err != nil {
+		return stack, err
+	}
+
+	if err = json.Unmarshal(resp, &stack); err != nil {
+		return stack, err
+	}
+
+	return stack, nil
+}
+
+func (m *client) GetServicesByEnvironmentUUID(envUUID string) ([]Service, error) {
+	environments, err := m.GetEnvironments()
+	var services []Service
+	if err != nil {
+		return services, err
+	}
+
+	for _, env := range environments {
+		if envUUID == env.UUID {
+			services = append(services, env.Services...)
+			return services, err
+		}
+	}
+	return services, nil
 }
 
 func (m *client) GetContainers() ([]Container, error) {

@@ -2,6 +2,7 @@ package rancher
 
 import (
 	"encoding/json"
+
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/lb-controller/config"
 )
