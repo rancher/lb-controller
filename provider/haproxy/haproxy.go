@@ -278,16 +278,39 @@ func (lbp *Provider) IsEndpointDrained(ep *config.Endpoint) bool {
 	return false
 }
 
-func (dm *drainMgr) readCurrentStats(ep *config.Endpoint) (string, string, error) {
+func (dm *drainMgr) readCurrentStats(ep *config.Endpoint) (string, []string, error) {
+	totalScur := 0
+	var backendNames []string
 	//read stats
 	stats, err := dm.ReadStats()
 	if err != nil {
-		return "", "", fmt.Errorf("Error %v reading haproxy stats on  %v", err, dm.haproxySock)
+		return "", backendNames, fmt.Errorf("Error %v reading haproxy stats on  %v", err, dm.haproxySock)
 	}
-	if endpointStat, ok := stats[ep.Name]; ok {
-		return endpointStat["scur"], endpointStat["pxname"], nil
+
+	if _, ok := stats[ep.Name]; !ok {
+		return "", backendNames, fmt.Errorf("Error %v finding endpoint %v in haproxy stats", err, ep.Name)
 	}
-	return "", "", fmt.Errorf("Error %v finding endpoint %v in haproxy stats", err, ep.Name)
+
+	for _, endpointStat := range stats[ep.Name] {
+		logrus.Debugf("scur for %v is: %v", endpointStat["pxname"]+"/"+ep.Name, endpointStat["scur"])
+		if escur, ok := endpointStat["scur"]; ok {
+			if escur != "" {
+				escurInt, err := strconv.Atoi(escur)
+				if err != nil {
+					logrus.Errorf("Error %v while converting scur %v, defaulting to 0", err, escur)
+					escurInt = 0
+				}
+				totalScur = totalScur + escurInt
+			}
+		}
+		if pxname, ok := endpointStat["pxname"]; ok {
+			endpointFullName := pxname + "/" + ep.Name
+			backendNames = append(backendNames, endpointFullName)
+		}
+	}
+
+	return strconv.Itoa(totalScur), backendNames, nil
+
 }
 
 func (dm *drainMgr) olderPidExists() (bool, error) {
@@ -310,19 +333,27 @@ func (dm *drainMgr) olderPidExists() (bool, error) {
 func (dm *drainMgr) AddEndpointForDrain(ep *config.Endpoint, pid string) bool {
 	//check if drain is needed by looking at Stats
 	if ep != nil && ep.Name != "" {
-		scur, pxname, err := dm.readCurrentStats(ep)
+		scur, pxnames, err := dm.readCurrentStats(ep)
 		if err != nil {
 			logrus.Errorf("AddEndpointForDrain: Error %v", err)
 			return false
 		}
 		//set weight to zero on the socket anyway to stop accepting new connections
-		err = dm.SetWeightForDrain(pxname + "/" + ep.Name)
-		if err != nil {
-			logrus.Errorf("AddEndpointForDrain: Error %v setting weight via socket for Endpoint %v", err, pxname+"/"+ep.Name)
+		setWeightFailed := false
+		for _, pxname := range pxnames {
+			err = dm.SetWeightForDrain(pxname)
+			if err != nil {
+				logrus.Errorf("AddEndpointForDrain: Error %v setting weight via socket for Endpoint backend %v", err, pxname)
+				setWeightFailed = true
+			}
+		}
+
+		if setWeightFailed {
 			return false
 		}
+
 		logrus.Debugf("AddEndpointForDrain: scur %v Endpoint %v", scur, ep.Name)
-		if scur == "" || scur == "0" {
+		if scur == "0" {
 			//stats are zero on the current pid, check if any older pid around.
 			oldPidExists, err := dm.olderPidExists()
 			if err != nil {
@@ -365,8 +396,8 @@ func (dm *drainMgr) isEndpointUpForDrain(ep *config.Endpoint) (bool, string) {
 	return false, ""
 }
 
-func (dm *drainMgr) ReadStats() (map[string]Stat, error) {
-	stats := make(map[string]Stat)
+func (dm *drainMgr) ReadStats() (map[string][]Stat, error) {
+	stats := make(map[string][]Stat)
 
 	lines, err := dm.runCommand("show stat")
 	if err != nil {
@@ -395,7 +426,7 @@ func (dm *drainMgr) ReadStats() (map[string]Stat, error) {
 			stat[keys[i]] = values[i]
 		}
 
-		stats[stat["svname"]] = stat
+		stats[stat["svname"]] = append(stats[stat["svname"]], stat)
 	}
 
 	return stats, err
