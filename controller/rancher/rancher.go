@@ -13,6 +13,15 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	revents "github.com/rancher/event-subscriber/events"
+	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/controller"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
+
+	"github.com/Sirupsen/logrus"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
@@ -36,14 +45,24 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 		logrus.Fatalf("CATTLE_URL is not set, fail to init Rancher LB provider")
 	}
 
-	cattleAccessKey := os.Getenv("CATTLE_ACCESS_KEY")
-	if len(cattleAccessKey) == 0 {
-		logrus.Fatalf("CATTLE_ACCESS_KEY is not set, fail to init of Rancher LB provider")
+	cattleEnvAdminAccessKey := os.Getenv("CATTLE_ENVIRONMENT_ADMIN_ACCESS_KEY")
+	if len(cattleEnvAdminAccessKey) == 0 {
+		logrus.Fatalf("CATTLE_ENVIRONMENT_ADMIN_ACCESS_KEY is not set, fail to init of Rancher LB provider")
 	}
 
-	cattleSecretKey := os.Getenv("CATTLE_SECRET_KEY")
-	if len(cattleSecretKey) == 0 {
-		logrus.Fatalf("CATTLE_SECRET_KEY is not set, fail to init of Rancher LB provider")
+	cattleEnvAdminSecretKey := os.Getenv("CATTLE_ENVIRONMENT_ADMIN_SECRET_KEY")
+	if len(cattleEnvAdminSecretKey) == 0 {
+		logrus.Fatalf("CATTLE_ENVIRONMENT_ADMIN_SECRET_KEY is not set, fail to init of Rancher LB provider")
+	}
+
+	cattleAgentAccessKey := os.Getenv("CATTLE_AGENT_ACCESS_KEY")
+	if len(cattleAgentAccessKey) == 0 {
+		logrus.Fatalf("CATTLE_AGENT_ACCESS_KEY is not set, fail to init of Rancher LB provider")
+	}
+
+	cattleAgentSecretKey := os.Getenv("CATTLE_AGENT_SECRET_KEY")
+	if len(cattleAgentSecretKey) == 0 {
+		logrus.Fatalf("CATTLE_AGENT_SECRET_KEY is not set, fail to init of Rancher LB provider")
 	}
 
 	pollIntervalStr := os.Getenv("CERTS_POLL_INTERVAL")
@@ -72,8 +91,8 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 
 	opts := &client.ClientOpts{
 		Url:       cattleURL,
-		AccessKey: cattleAccessKey,
-		SecretKey: cattleSecretKey,
+		AccessKey: cattleEnvAdminAccessKey,
+		SecretKey: cattleEnvAdminSecretKey,
 	}
 
 	client, err := client.NewRancherClient(opts)
@@ -120,6 +139,19 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 	}
 	lbc.CertFetcher = certFetcher
 
+	eHandler := &REventsHandler{
+		CattleURL:       cattleURL,
+		CattleAccessKey: cattleAgentAccessKey,
+		CattleSecretKey: cattleAgentSecretKey,
+		CheckOnEvent:    lbc.IsEndpointUpForDrain,
+		DoOnEvent:       lbc.DrainEndpoint,
+		PollStatus:      lbc.IsEndpointDrained,
+		DoOnTimeout:     lbc.RemoveEndpointFromDrain,
+		EventMap:        make(map[string]*revents.Event),
+		EventMu:         &sync.RWMutex{},
+	}
+	lbc.EventsHandler = eHandler
+
 }
 
 type LoadBalancerController struct {
@@ -132,6 +164,7 @@ type LoadBalancerController struct {
 	incrementalBackoffInterval int64
 	CertFetcher                CertificateFetcher
 	MetaFetcher                MetadataFetcher
+	EventsHandler              EventsHandler
 }
 
 type MetadataFetcher interface {
@@ -165,6 +198,17 @@ func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
 
 	go lbc.LBProvider.Run(nil)
 
+	go func() {
+		for {
+			err := lbc.EventsHandler.Subscribe()
+			if err != nil {
+				logrus.Errorf("Error subscribing to events: %v", err)
+			} else {
+				break
+			}
+		}
+	}()
+
 	go lbc.CertFetcher.LookForCertUpdates(lbc.ScheduleApplyConfig)
 
 	lbc.MetaFetcher.OnChange(5, lbc.ScheduleApplyConfig)
@@ -186,6 +230,26 @@ func (mf RMetaFetcher) GetServicesFromRegionEnvironment(regionName string, envNa
 func (lbc *LoadBalancerController) ScheduleApplyConfig(string) {
 	logrus.Debug("Scheduling apply config")
 	lbc.syncQueue.Enqueue(lbc.GetName())
+}
+
+func (lbc *LoadBalancerController) IsEndpointUpForDrain(ep *config.Endpoint) bool {
+	if lbc.LBProvider.IsEndpointUpForDrain(ep) {
+		logrus.Debug("DrainEndpoint: The endpoint is already in drainlist")
+		return true
+	}
+	return false
+}
+
+func (lbc *LoadBalancerController) DrainEndpoint(ep *config.Endpoint) bool {
+	return lbc.LBProvider.DrainEndpoint(ep)
+}
+
+func (lbc *LoadBalancerController) IsEndpointDrained(ep *config.Endpoint) bool {
+	return lbc.LBProvider.IsEndpointDrained(ep)
+}
+
+func (lbc *LoadBalancerController) RemoveEndpointFromDrain(ep *config.Endpoint) {
+	lbc.LBProvider.RemoveEndpointFromDrain(ep)
 }
 
 func (lbc *LoadBalancerController) Stop() error {
@@ -278,7 +342,6 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			if err != nil {
 				return nil, err
 			}
-
 			hc, err = getServiceHealthCheck(service)
 			if err != nil {
 				return nil, err
@@ -743,12 +806,16 @@ func (lbc *LoadBalancerController) getRegularServiceEndpoints(svc *metadata.Serv
 }
 
 func getContainerEndpoint(c *metadata.Container, targetPort int, selfHostUUID string, localServicePreference string) (*config.Endpoint, bool) {
-	if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") {
+	if strings.EqualFold(c.State, "running") || strings.EqualFold(c.State, "starting") || strings.EqualFold(c.State, "stopping") {
 		ep := &config.Endpoint{
 			Name: hashIP(c.PrimaryIp),
 			IP:   c.PrimaryIp,
 			Port: targetPort,
 		}
+		if strings.EqualFold(c.State, "stopping") {
+			ep.Weight = "0"
+		}
+
 		if localServicePreference != "any" && !strings.EqualFold(c.HostUUID, selfHostUUID) {
 			return ep, true
 		}
