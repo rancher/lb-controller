@@ -2,6 +2,12 @@ package rancherglb
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/patrickmn/go-cache"
 	"github.com/rancher/go-rancher-metadata/metadata"
@@ -11,11 +17,6 @@ import (
 	"github.com/rancher/lb-controller/controller/rancher"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
-	"reflect"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func init() {
@@ -59,9 +60,10 @@ type glbController struct {
 
 type MetadataFetcher interface {
 	GetSelfService() (metadata.Service, error)
-	GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error)
+	GetService(link string) (*metadata.Service, error)
 	OnChange(intervalSeconds int, do func(string))
 	GetServices() ([]metadata.Service, error)
+	GetRegionName() (string, error)
 }
 
 func (lbc *glbController) GetName() string {

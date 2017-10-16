@@ -2,15 +2,16 @@ package rancherglb
 
 import (
 	// "github.com/Sirupsen/logrus"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/patrickmn/go-cache"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/controller/rancher"
 	utils "github.com/rancher/lb-controller/utils"
-	"strings"
-	"testing"
-	"time"
 )
 
 var glb *glbController
@@ -204,46 +205,46 @@ func (mf tMetaFetcher) GetContainer(envUUID string, containerName string) (*meta
 func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	var svcs []metadata.Service
 
-	foo, err := mf.GetService("", "foo", "foo")
+	foo, err := mf.GetService("foo/foo")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *foo)
-	foodup, err := mf.GetService("", "foodup", "foo")
+	foodup, err := mf.GetService("foo/foodup")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *foodup)
-	bar, err := mf.GetService("", "bar", "bar")
+	bar, err := mf.GetService("bar/bar")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *bar)
-	lbBar, err := mf.GetService("", "lbbar", "bar")
+	lbBar, err := mf.GetService("bar/lbBar")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *lbBar)
 
-	lbFoo, err := mf.GetService("", "lbfoo", "foo")
+	lbFoo, err := mf.GetService("foo/lbfoo")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *lbFoo)
 
-	lbFooDup, err := mf.GetService("", "lbfoodup", "foo")
+	lbFooDup, err := mf.GetService("foo/lbfoodup")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *lbFooDup)
 
-	lbInactive, err := mf.GetService("", "lbinactive", "foo")
+	lbInactive, err := mf.GetService("foo/lbinactive")
 	if err != nil {
 		return nil, err
 	}
 	svcs = append(svcs, *lbInactive)
 
-	lbActive, err := mf.GetService("", "lbactive", "foo")
+	lbActive, err := mf.GetService("foo/lbactive")
 	if err != nil {
 		return nil, err
 	}
@@ -252,9 +253,35 @@ func (mf tMetaFetcher) GetServices() ([]metadata.Service, error) {
 	return svcs, nil
 }
 
-func (mf tMetaFetcher) GetService(envUUID string, svcName string, stackName string) (*metadata.Service, error) {
-	var svc *metadata.Service
+func (mf tMetaFetcher) GetServicesFromRegionEnvironment(regionName string, envName string) ([]metadata.Service, error) {
+	var svcs []metadata.Service
+	return svcs, nil
+}
 
+func (mf tMetaFetcher) GetServicesInLocalRegion(envName string) ([]metadata.Service, error) {
+	var svcs []metadata.Service
+	return svcs, nil
+}
+
+func (mf tMetaFetcher) GetServiceFromRegionEnvironment(regionName string, envName string, stackName string, svcName string) (metadata.Service, error) {
+	var svc metadata.Service
+	return svc, nil
+}
+
+func (mf tMetaFetcher) GetServiceInLocalRegion(envName string, stackName string, svcName string) (metadata.Service, error) {
+	var svc metadata.Service
+	return svc, nil
+}
+
+func (mf tMetaFetcher) GetServiceInLocalEnvironment(stackName string, svcName string) (metadata.Service, error) {
+	var svc metadata.Service
+	return svc, nil
+}
+
+func (mf tMetaFetcher) GetService(link string) (*metadata.Service, error) {
+	var svc *metadata.Service
+	splitSvcName := strings.Split(link, "/")
+	svcName := splitSvcName[1]
 	if strings.EqualFold(svcName, "foo") {
 		foo := metadata.Service{
 			Kind:       "service",
@@ -471,6 +498,10 @@ func (mf tMetaFetcher) GetSelfService() (metadata.Service, error) {
 }
 
 func (mf tMetaFetcher) OnChange(intervalSeconds int, do func(string)) {
+}
+
+func (mf tMetaFetcher) GetRegionName() (string, error) {
+	return "", nil
 }
 
 func (cf tCertFetcher) FetchCertificates(lbMeta *rancher.LBMetadata, isDefaultCert bool) ([]*config.Certificate, error) {

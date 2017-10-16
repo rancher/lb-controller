@@ -235,8 +235,8 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string,
 
 				//check if the endpoint is in drain list. If yes then add weight 0 to ep.Config
 				inDrainList, _ := drainMgr.isEndpointUpForDrain(ep)
-				if inDrainList || ep.Weight == "0" {
-					ep.Config = fmt.Sprintf("%s weight %d", ep.Config, 0)
+				if inDrainList || (ep.Weight != 1 && ep.Weight >= 0 && ep.Weight < 257) {
+					ep.Config = fmt.Sprintf("%s weight %d", ep.Config, ep.Weight)
 				}
 			}
 		}
