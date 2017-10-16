@@ -2,13 +2,14 @@ package haproxy
 
 import (
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/rancher/lb-controller/config"
 	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/rancher/lb-controller/config"
 )
 
 var lbp Provider
@@ -289,9 +290,10 @@ func TestBuildCustomConfigBackendServer(t *testing.T) {
 	backends := []*config.BackendService{}
 	var eps1 config.Endpoints
 	ep1 := &config.Endpoint{
-		Name: "s1",
-		IP:   "10.1.1.1",
-		Port: 90,
+		Name:   "s1",
+		IP:     "10.1.1.1",
+		Port:   90,
+		Weight: 1,
 	}
 	eps1 = append(eps1, ep1)
 	backend := &config.BackendService{
@@ -302,9 +304,10 @@ func TestBuildCustomConfigBackendServer(t *testing.T) {
 	}
 	var eps2 config.Endpoints
 	ep2 := &config.Endpoint{
-		Name: "s2",
-		IP:   "10.1.1.2",
-		Port: 90,
+		Name:   "s2",
+		IP:     "10.1.1.2",
+		Port:   90,
+		Weight: 1,
 	}
 	eps2 = append(eps2, ep2)
 	backends = append(backends, backend)
@@ -478,6 +481,7 @@ func TestCnameEndpointServer(t *testing.T) {
 		IP:      "google.com",
 		Port:    90,
 		IsCname: true,
+		Weight:  100,
 	}
 	eps = append(eps, ep)
 	backend := &config.BackendService{
@@ -505,7 +509,7 @@ func TestCnameEndpointServer(t *testing.T) {
 		t.Fatalf("Error while process custom config: %v", err)
 	}
 
-	expected := "  check resolvers rancher"
+	expected := "  check resolvers rancher weight 100"
 	actual := lbConfig.FrontendServices[0].BackendServices[0].Endpoints[0].Config
 	result := strings.EqualFold(expected, actual)
 

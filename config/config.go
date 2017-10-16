@@ -73,7 +73,7 @@ type Endpoint struct {
 	Config       string
 	IsCname      bool
 	DrainTimeout string
-	Weight       string
+	Weight       int
 }
 
 type FrontendService struct {
