@@ -127,6 +127,10 @@ func (ehandler *REventsHandler) HandleDrainEvent(event *revents.Event, cli *clie
 	primaryIP, ok := event.Data["targetIPaddress"]
 
 	if ok {
+		if primaryIP == nil {
+			//just reply to this event, but no drain needed
+			return true, nil
+		}
 		ep := &config.Endpoint{
 			IP:           primaryIP.(string),
 			DrainTimeout: "15000",
