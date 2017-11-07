@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -25,6 +27,10 @@ const (
 	BegRuleComparator = "beg"
 	EndRuleComparator = "end"
 )
+
+const backendPattern = `[^A-Za-z0-9]+`
+
+var regexBackend = regexp.MustCompile(backendPattern)
 
 type HealthCheck struct {
 	ResponseTimeout    int    `json:"response_timeout"`
@@ -166,4 +172,13 @@ func (s Endpoints) Swap(i, j int) {
 }
 func (s Endpoints) Less(i, j int) bool {
 	return strings.Compare(s[i].IP, s[j].IP) > 0
+}
+
+func FormulateBackendName(sourcePort int64, hostname string, path string) string {
+	var bName string
+
+	pathUUID := fmt.Sprintf("%v_%s_%s", sourcePort, hostname, path)
+	bName = regexBackend.ReplaceAllString(pathUUID, "_")
+
+	return bName
 }
