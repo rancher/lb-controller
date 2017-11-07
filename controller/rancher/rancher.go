@@ -13,7 +13,6 @@ import (
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -281,10 +280,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 
 	allBe := make(map[string]*config.BackendService)
 	allEps := make(map[string]map[string]string)
-	reg, err := regexp.Compile("[^A-Za-z0-9]+")
-	if err != nil {
-		return nil, err
-	}
+
 	for _, rule := range lbMeta.PortRules {
 		if rule.SourcePort < 1 {
 			continue
@@ -372,7 +368,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 			UUID := rule.BackendName
 			if UUID == "" {
 				//replace all non alphanumeric with _
-				UUID = reg.ReplaceAllString(pathUUID, "_")
+				UUID = config.FormulateBackendName(int64(rule.SourcePort), hostname, path)
 			}
 			backend := &config.BackendService{
 				UUID:           UUID,

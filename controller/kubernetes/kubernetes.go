@@ -1,16 +1,16 @@
 package kubernetes
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"os"
-	"strconv"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/config"
@@ -39,6 +39,7 @@ var (
 
 const (
 	rancherStickinessPolicyLabel = "io.rancher.stickiness.policy"
+	livenessProbesLabel          = "io.rancher.kubernetes.livenessprobes"
 	caLocation                   = "/etc/kubernetes/ssl/ca.pem"
 	ingressClassKey              = "kubernetes.io/ingress.class"
 	rancherIngressClass          = "rancher"
@@ -111,6 +112,24 @@ type loadBalancerController struct {
 	shutdown       bool
 	stopCh         chan struct{}
 	lbProvider     provider.LBProvider
+}
+
+type Probe struct {
+	HTTPGet          *HTTPProbe `json:"httpGet,omitempty"`
+	TCPSocket        *TCPProbe  `json:"tcpSocket,omitempty"`
+	PeriodSeconds    int        `json:"periodSeconds,omitempty"`
+	SuccessThreshold int        `json:"successThreshold,omitempty"`
+	FailureThreshold int        `json:"failureThreshold,omitempty"`
+	TimeoutSeconds   int        `json:"timeoutSeconds,omitempty"`
+}
+
+type HTTPProbe struct {
+	Path string `json:"path,omitempty"`
+	Port int    `json:"port,omitempty"`
+}
+
+type TCPProbe struct {
+	Port int `json:"port,omitempty"`
 }
 
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string) (*loadBalancerController, error) {
@@ -240,7 +259,10 @@ func (lbc *loadBalancerController) sync(key string) {
 		return
 	}
 	requeue := false
-	cfgs, _ := lbc.GetLBConfigs()
+	cfgs, err := lbc.GetLBConfigs()
+	if err != nil {
+		logrus.Errorf("Error forming LB Config from Ingress spec: %v", err)
+	}
 	for _, cfg := range cfgs {
 		if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
 			logrus.Errorf("Failed to apply lb config on provider: %v", err)
@@ -390,6 +412,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			continue
 		}
 		backends := []*config.BackendService{}
+		backendUUIDSvcMap := make(map[string]string)
 		// process default rule
 		if ing.Spec.Backend != nil {
 			svcName := ing.Spec.Backend.ServiceName
@@ -399,6 +422,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 				backend := lbc.getServiceBackend(svc, svcPort, "", "")
 				if backend != nil {
 					backends = append(backends, backend)
+					backendUUIDSvcMap[backend.UUID] = svcName
 				}
 			}
 		}
@@ -433,6 +457,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 				backend := lbc.getServiceBackend(svc, path.Backend.ServicePort.IntValue(), path.Path, rule.Host)
 				if backend != nil {
 					backends = append(backends, backend)
+					backendUUIDSvcMap[backend.UUID] = svcName
 				}
 			}
 		}
@@ -475,6 +500,11 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			frontEndServices = append(frontEndServices, frontEndHTTPSService)
 		}
 
+		probeStr := params[livenessProbesLabel]
+		probeConfig, err := lbc.getProbeConfig(probeStr, frontEndServices, backendUUIDSvcMap)
+		if err != nil {
+			return nil, err
+		}
 		stickinessPolicyString := params[rancherStickinessPolicyLabel]
 
 		var stickinessPolicy *config.StickinessPolicy
@@ -510,10 +540,19 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			}
 		}
 
+		customConfig := params["config"]
+		if probeConfig != "" {
+			if customConfig != "" {
+				customConfig = fmt.Sprintf("%s\n%s", customConfig, probeConfig)
+			} else {
+				customConfig = probeConfig
+			}
+		}
+
 		lbConfig := &config.LoadBalancerConfig{
 			Name:             fmt.Sprintf("%v/%v", ing.GetNamespace(), ing.Name),
 			FrontendServices: frontEndServices,
-			Config:           params["config"],
+			Config:           customConfig,
 			DefaultCert:      cert,
 			Annotations:      params,
 			StickinessPolicy: stickinessPolicy,
@@ -522,6 +561,92 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 	}
 
 	return lbConfigs, nil
+}
+
+func (lbc *loadBalancerController) getProbeConfig(probeStr string, frontEndServices []*config.FrontendService, backendUUIDSvcMap map[string]string) (string, error) {
+	var probeConfig string
+
+	if probeStr != "" {
+		livenessProbeMap := make(map[string]*Probe)
+		err := json.Unmarshal([]byte(probeStr), &livenessProbeMap)
+		if err != nil {
+			return "", fmt.Errorf("Error unmarshaling k8s livenessProbes: %v err: %v", probeStr, err)
+		}
+		if len(livenessProbeMap) == 0 {
+			return "", fmt.Errorf("No k8s livenessProbes found in the label: %v", probeStr)
+		}
+		// form the custom config
+		svcBackendNameMap := lbc.createSvcBackendNameMap(frontEndServices, backendUUIDSvcMap)
+		if svcBackendNameMap == nil {
+			return "", fmt.Errorf("Error creating the service to backend names map")
+		}
+
+		for service, probeStruct := range livenessProbeMap {
+			if _, ok := svcBackendNameMap[service]; !ok {
+				return "", fmt.Errorf("Ingress spec seems to be missing backend service: %v from the livenessProbes %v", service, probeStr)
+			}
+			subConfig := "backend " + svcBackendNameMap[service]
+			port := 0
+
+			if probeStruct.TimeoutSeconds != 0 {
+				timeout := "timeout check"
+				subConfig = fmt.Sprintf("%s\n%s %d", subConfig, timeout, probeStruct.TimeoutSeconds*1000)
+			}
+
+			if probeStruct.HTTPGet != nil {
+				httpchk := "option httpchk"
+				if probeStruct.HTTPGet.Path != "" {
+					qpath := "\"" + probeStruct.HTTPGet.Path + "\""
+					httpversion := "\"" + "HTTP/1.0" + "\""
+					httpchk = fmt.Sprintf("%s GET %s %s", httpchk, qpath, httpversion)
+				}
+				subConfig = fmt.Sprintf("%s\n%s", subConfig, httpchk)
+				port = probeStruct.HTTPGet.Port
+			} else if probeStruct.TCPSocket != nil {
+				tcpchk := "option tcp-check"
+				subConfig = fmt.Sprintf("%s\n%s", subConfig, tcpchk)
+				port = probeStruct.TCPSocket.Port
+			} else {
+				return "", fmt.Errorf("Missing HTTP or TCP probes for service: %v in the livenessProbes %v", service, probeStr)
+			}
+			server := "server $IP check"
+			if port != 0 {
+				server = fmt.Sprintf("%s port %d", server, port)
+			}
+			if probeStruct.PeriodSeconds != 0 {
+				server = fmt.Sprintf("%s inter %d", server, probeStruct.PeriodSeconds*1000)
+			}
+			if probeStruct.SuccessThreshold != 0 {
+				server = fmt.Sprintf("%s rise %d", server, probeStruct.SuccessThreshold)
+			}
+			if probeStruct.FailureThreshold != 0 {
+				server = fmt.Sprintf("%s fall %d", server, probeStruct.FailureThreshold)
+			}
+			subConfig = fmt.Sprintf("%s\n %s", subConfig, server)
+			if probeConfig == "" {
+				probeConfig = subConfig
+			} else {
+				probeConfig = fmt.Sprintf("%s\n%s", probeConfig, subConfig)
+			}
+		}
+	}
+	return probeConfig, nil
+}
+
+func (lbc *loadBalancerController) createSvcBackendNameMap(frontendServices []*config.FrontendService, backendUUIDSvcMap map[string]string) map[string]string {
+
+	svcBackendNameMap := make(map[string]string)
+
+	for _, fe := range frontendServices {
+		for _, bcknd := range fe.BackendServices {
+			bName := config.FormulateBackendName(int64(fe.Port), bcknd.Host, bcknd.Path)
+			svcName := backendUUIDSvcMap[bcknd.UUID]
+
+			svcBackendNameMap[svcName] = bName
+		}
+	}
+
+	return svcBackendNameMap
 }
 
 func (lbc *loadBalancerController) getCertificate(secretName string, namespace string) (*config.Certificate, error) {
