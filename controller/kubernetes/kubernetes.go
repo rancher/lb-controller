@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -580,11 +581,17 @@ func (lbc *loadBalancerController) getProbeConfig(probeStr string, frontEndServi
 		if svcBackendNameMap == nil {
 			return "", fmt.Errorf("Error creating the service to backend names map")
 		}
+		var probeServicekeys []string
+		for service := range livenessProbeMap {
+			probeServicekeys = append(probeServicekeys, service)
+		}
+		sort.Strings(probeServicekeys)
 
-		for service, probeStruct := range livenessProbeMap {
+		for _, service := range probeServicekeys {
 			if _, ok := svcBackendNameMap[service]; !ok {
 				return "", fmt.Errorf("Ingress spec seems to be missing backend service: %v from the livenessProbes %v", service, probeStr)
 			}
+			probeStruct := livenessProbeMap[service]
 			subConfig := "backend " + svcBackendNameMap[service]
 			port := 0
 
