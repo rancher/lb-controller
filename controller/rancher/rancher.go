@@ -522,8 +522,8 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 			continue
 		}
 
-		regionName := lbRule.Region
-		envName := lbRule.Environment
+		regionName := strings.ToLower(lbRule.Region)
+		envName := strings.ToLower(lbRule.Environment)
 
 		svcs, err := lbc.GetRegionServices(&localsvcs, regionName, envName)
 		if err != nil {
