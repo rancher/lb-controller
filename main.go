@@ -40,9 +40,10 @@ func main() {
 			Value: "haproxy",
 			Usage: "Provider plugin name",
 		}, cli.StringFlag{
-			Name:  "metadata-address",
-			Value: "rancher-metadata",
-			Usage: "Rancher metadata address",
+			Name:   "metadata-address",
+			EnvVar: "RANCHER_METADATA_ADDRESS",
+			Value:  "169.254.169.250",
+			Usage:  "Rancher metadata address",
 		},
 	}
 
