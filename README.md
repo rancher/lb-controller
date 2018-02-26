@@ -7,7 +7,7 @@ Rancher provider is a default one, although you can develop and deploy your own 
 # Design
 
 * LB-controller gets deployed as a containerized app with controller and provider names passed as an argument
-* Controler listens to the corresponding server events, generate load balancer config and pass it to the provider to apply.
+* Controller listens to the corresponding server events, generate load balancer config and pass it to the provider to apply.
 * Provider configures external load balancer, and pass LB public end point to the controller. 
 * Controller propagates LB public end point back to the server.
 * Controller doesn't carry any provider implementation details; it communicates with the provider via generic provider interface using generic LB config.
