@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -232,7 +233,7 @@ func (m *client) GetServiceFromRegionEnvironment(regionName string, envName stri
 	}
 
 	for _, env := range environments {
-		if regionName == env.RegionName && envName == env.Name {
+		if strings.EqualFold(regionName, env.RegionName) && strings.EqualFold(envName, env.Name) {
 			for _, svc := range env.Services {
 				if stackName == svc.StackName && svcName == svc.Name {
 					return svc, nil
@@ -298,7 +299,7 @@ func (m *client) GetServicesFromRegionEnvironment(regionName string, envName str
 	}
 
 	for _, env := range environments {
-		if regionName == env.RegionName && envName == env.Name {
+		if strings.EqualFold(regionName, env.RegionName) && strings.EqualFold(envName, env.Name) {
 			services = append(services, env.Services...)
 			return services, err
 		}
