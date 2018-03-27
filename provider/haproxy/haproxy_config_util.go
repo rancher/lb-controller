@@ -212,19 +212,19 @@ func BuildCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string)
 
 				if healthcheck {
 					// taken from rancher/healthcheck default behaviour
-					fall:=""
-					if(be.HealthCheck.UnhealthyThreshold !=  0){
-						fall=fmt.Sprintf(" fall %v", be.HealthCheck.UnhealthyThreshold)
+					fall := ""
+					if be.HealthCheck.UnhealthyThreshold > 0 {
+						fall = fmt.Sprintf(" fall %v", be.HealthCheck.UnhealthyThreshold)
 					}
 
-					rise:=""
-					if(be.HealthCheck.HealthyThreshold != 0) {
-						rise=fmt.Sprintf(" rise %v",be.HealthCheck.HealthyThreshold)
+					rise := ""
+					if be.HealthCheck.HealthyThreshold > 0 {
+						rise = fmt.Sprintf(" rise %v", be.HealthCheck.HealthyThreshold)
 					}
 
-					inter:=""
-					if(be.HealthCheck.Interval != 0) {
-						inter=fmt.Sprintf(" inter %v", be.HealthCheck.Interval)
+					inter := ""
+					if be.HealthCheck.Interval > 0 {
+						inter = fmt.Sprintf(" inter %v", be.HealthCheck.Interval)
 					}
 
 					hc := fmt.Sprintf("check port %v%s%s%s", be.HealthCheck.Port, inter, rise, fall)
