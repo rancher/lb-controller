@@ -42,7 +42,7 @@ func main() {
 			Usage: "Provider plugin name",
 		}, cli.StringFlag{
 			Name:  "metadata-address",
-			Value: "rancher-metadata",
+			Value: "169.254.169.250",
 			Usage: "Rancher metadata address",
 		},
 	}
