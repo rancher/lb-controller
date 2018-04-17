@@ -292,6 +292,9 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 	}
 
 	ing := obj.(*extensions.Ingress)
+	if ing.DeletionTimestamp != nil {
+		return
+	}
 
 	ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
 
