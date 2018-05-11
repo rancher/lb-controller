@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/leodotcloud/log"
 	"github.com/rancher/event-subscriber/locks"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
@@ -42,19 +42,19 @@ type LBProvider struct {
 func init() {
 	cattleURL := os.Getenv("CATTLE_URL")
 	if len(cattleURL) == 0 {
-		logrus.Info("CATTLE_URL is not set, skipping init of Rancher LB provider")
+		log.Info("CATTLE_URL is not set, skipping init of Rancher LB provider")
 		return
 	}
 
 	cattleAccessKey := os.Getenv("CATTLE_ACCESS_KEY")
 	if len(cattleAccessKey) == 0 {
-		logrus.Info("CATTLE_ACCESS_KEY is not set, skipping init of Rancher LB provider")
+		log.Info("CATTLE_ACCESS_KEY is not set, skipping init of Rancher LB provider")
 		return
 	}
 
 	cattleSecretKey := os.Getenv("CATTLE_SECRET_KEY")
 	if len(cattleSecretKey) == 0 {
-		logrus.Info("CATTLE_SECRET_KEY is not set, skipping init of Rancher LB provider")
+		log.Info("CATTLE_SECRET_KEY is not set, skipping init of Rancher LB provider")
 		return
 	}
 
@@ -75,7 +75,7 @@ func init() {
 	client, err := client.NewRancherClient(opts)
 
 	if err != nil {
-		logrus.Fatalf("Failed to create Rancher client %v", err)
+		log.Fatalf("Failed to create Rancher client %v", err)
 	}
 
 	lbp := &LBProvider{
@@ -90,7 +90,7 @@ func init() {
 func (lbp *LBProvider) IsHealthy() bool {
 	_, err := lbp.client.Stack.List(client.NewListOpts())
 	if err != nil {
-		logrus.Errorf("Health check failed: unable to reach Rancher. Error: %#v", err)
+		log.Errorf("Health check failed: unable to reach Rancher. Error: %#v", err)
 		return false
 	}
 	return true
@@ -136,16 +136,16 @@ func (lbp *LBProvider) CleanupConfig(name string) error {
 		return err
 	}
 	if lb == nil {
-		logrus.Infof("LB [%s] doesn't exist, no need to cleanup ", name)
+		log.Infof("LB [%s] doesn't exist, no need to cleanup ", name)
 		return nil
 	}
-	logrus.Infof("Deleting lb service [%s]", lb.Name)
+	log.Infof("Deleting lb service [%s]", lb.Name)
 	return lbp.deleteLBService(lb, false)
 }
 
 func (lbp *LBProvider) Stop() error {
 	close(lbp.stopCh)
-	logrus.Infof("shutting down syncEndpointsQueue")
+	log.Infof("shutting down syncEndpointsQueue")
 	lbp.syncEndpointsQueue.Shutdown()
 	return nil
 }
@@ -157,7 +157,7 @@ func (lbp *LBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
 	go lbp.syncupEndpoints()
 
 	<-lbp.stopCh
-	logrus.Infof("shutting down kubernetes-lb-controller")
+	log.Infof("shutting down kubernetes-lb-controller")
 }
 
 func (lbp *LBProvider) syncupEndpoints() error {
@@ -168,7 +168,7 @@ func (lbp *LBProvider) syncupEndpoints() error {
 		//get all lb services in the system
 		lbs, err := lbp.getAllLBServices()
 		if err != nil {
-			logrus.Errorf("Failed to get lb services: %v", err)
+			log.Errorf("Failed to get lb services: %v", err)
 			continue
 		}
 		for _, lb := range lbs {
@@ -239,30 +239,30 @@ func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 	epStr := []string{}
 	lb, err := lbp.getLBServiceForConfig(configName)
 	if err != nil {
-		logrus.Errorf("Failed to find LB [%s]: %v", configName, err)
+		log.Errorf("Failed to find LB [%s]: %v", configName, err)
 		return epStr
 	}
 	if lb == nil {
-		logrus.Infof("LB [%s] is not ready yet, skipping endpoint update", configName)
+		log.Infof("LB [%s] is not ready yet, skipping endpoint update", configName)
 		return epStr
 	}
 
 	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
 	_, ok := <-epChannel
 	if !ok {
-		logrus.Infof("Couldn't get publicEndpoints for LB [%s], skipping endpoint update", lb.Name)
+		log.Infof("Couldn't get publicEndpoints for LB [%s], skipping endpoint update", lb.Name)
 		return epStr
 	}
 
 	lb, err = lbp.reloadLBService(lb)
 	if err != nil {
-		logrus.Infof("Failed to reload LB [%s], skipping endpoint update", lb.Name)
+		log.Infof("Failed to reload LB [%s], skipping endpoint update", lb.Name)
 		return epStr
 	}
 
 	eps := lb.PublicEndpoints
 	if len(eps) == 0 {
-		logrus.Infof("No public endpoints found for LB [%s], skipping endpoint update", lb.Name)
+		log.Infof("No public endpoints found for LB [%s], skipping endpoint update", lb.Name)
 		return epStr
 	}
 
@@ -271,7 +271,7 @@ func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 
 		err = convertObject(epObj, &ep)
 		if err != nil {
-			logrus.Errorf("Faield to convert public endpoints for LB [%s], skipping endpoint update %v", lb.Name, err)
+			log.Errorf("Faield to convert public endpoints for LB [%s], skipping endpoint update %v", lb.Name, err)
 			return epStr
 		}
 		epStr = append(epStr, ep.IPAddress)
@@ -451,7 +451,7 @@ func (lbp *LBProvider) updateRancherLBService(lbConfig *config.LoadBalancerConfi
 	if update {
 		toUpdate := make(map[string]interface{})
 		toUpdate["lbConfig"] = updatedConfig
-		logrus.Infof("Updating Rancher LB with the new lbConfig [%s] ", updatedConfig)
+		log.Infof("Updating Rancher LB with the new lbConfig [%s] ", updatedConfig)
 		if _, err = lbp.client.LoadBalancerService.Update(lb, toUpdate); err != nil {
 			return fmt.Errorf("Failed to update lb [%s]. Error: %#v", lb.Name, err)
 		}
@@ -478,13 +478,13 @@ func (lbp *LBProvider) cleanupLBService(lb *client.LoadBalancerService, lbConfig
 	}
 
 	if portsChanged(newPorts, oldPorts) {
-		logrus.Infof("Ports changed for LB service [%s], need to recreate", lb.Name)
+		log.Infof("Ports changed for LB service [%s], need to recreate", lb.Name)
 		lbp.deleteLBService(lb, true)
 		return nil
 	}
 
 	if schedulerLabelsChanged(lb.LaunchConfig.Labels, lbConfig.Annotations) {
-		logrus.Infof("Scheduling labels changed for LB service [%s], need to recreate", lb.Name)
+		log.Infof("Scheduling labels changed for LB service [%s], need to recreate", lb.Name)
 		lbp.deleteLBService(lb, true)
 		return nil
 	}
@@ -504,7 +504,7 @@ func (lbp *LBProvider) getLBServiceForConfig(lbConfigName string) (*client.LoadB
 	}
 	// legacy code where "-" was used as a separator
 	fmtName = lbp.formatLBName(lbConfigName, true)
-	logrus.Debugf("Fetching service by name [%v]", fmtName)
+	log.Debugf("Fetching service by name [%v]", fmtName)
 	return lbp.getLBServiceByName(fmtName)
 }
 
@@ -620,7 +620,7 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 		return lb, nil
 	}
 
-	logrus.Info("Creating lb service")
+	log.Info("Creating lb service")
 
 	lbPorts := []string{}
 	for _, lbFrontend := range lbConfig.FrontendServices {
@@ -688,7 +688,7 @@ func (lbp *LBProvider) GetSetting(key string) (string, bool) {
 	opts.Filters["name"] = key
 	settings, err := lbp.client.Setting.List(opts)
 	if err != nil {
-		logrus.Errorf("GetSetting(%s): Error: %s", key, err)
+		log.Errorf("GetSetting(%s): Error: %s", key, err)
 		return "", false
 	}
 
@@ -890,7 +890,7 @@ func (lbp *LBProvider) waitForCondition(condition string, callback waitCallback)
 		for i := 0; i < 10; i++ {
 			found, err := callback(ready)
 			if err != nil {
-				logrus.Errorf("Error: %#v", err)
+				log.Errorf("Error: %#v", err)
 				return
 			}
 
@@ -899,7 +899,7 @@ func (lbp *LBProvider) waitForCondition(condition string, callback waitCallback)
 			}
 			time.Sleep(time.Second * time.Duration(sleep))
 		}
-		logrus.Errorf("Timed out waiting for condition [%s] ", condition)
+		log.Errorf("Timed out waiting for condition [%s] ", condition)
 	}()
 	return ready
 }

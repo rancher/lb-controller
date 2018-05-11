@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/leodotcloud/log"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
@@ -89,7 +89,7 @@ func init() {
 
 		return nil
 	}(); err != nil {
-		logrus.Errorf("Failed to initialize Kubernetes controller: %v", err)
+		log.Errorf("Failed to initialize Kubernetes controller: %v", err)
 	}
 }
 
@@ -135,7 +135,7 @@ type TCPProbe struct {
 
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, namespace string) (*loadBalancerController, error) {
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(logrus.Infof)
+	eventBroadcaster.StartLogging(log.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(""))
 	lbc := loadBalancerController{
 		client:   kubeClient,
@@ -262,11 +262,11 @@ func (lbc *loadBalancerController) sync(key string) {
 	requeue := false
 	cfgs, err := lbc.GetLBConfigs()
 	if err != nil {
-		logrus.Errorf("Error forming LB Config from Ingress spec: %v", err)
+		log.Errorf("Error forming LB Config from Ingress spec: %v", err)
 	}
 	for _, cfg := range cfgs {
 		if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
-			logrus.Errorf("Failed to apply lb config on provider: %v", err)
+			log.Errorf("Failed to apply lb config on provider: %v", err)
 			requeue = true
 		}
 	}
@@ -297,7 +297,7 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 	currIng, err := ingClient.Get(ing.Name)
 	if err != nil {
-		logrus.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
+		log.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 		return
 	}
 
@@ -307,7 +307,7 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 	// add missing
 	for _, IP := range toAdd {
-		logrus.Infof("Updating ingress %v/%v with IP %v", ing.Namespace, ing.Name, IP)
+		log.Infof("Updating ingress %v/%v with IP %v", ing.Namespace, ing.Name, IP)
 		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
 			IP: IP,
 		})
@@ -323,7 +323,7 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 	for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
 		for _, IP := range toRemove {
 			if IP == lbStatus.IP {
-				logrus.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbStatus.IP)
+				log.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbStatus.IP)
 
 				currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
 					currIng.Status.LoadBalancer.Ingress[idx+1:]...)
@@ -385,7 +385,7 @@ func (lbc *loadBalancerController) getPublicEndpoints(key string) []string {
 
 // Starts a load balancer controller
 func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
-	logrus.Infof("starting %s controller", lbc.GetName())
+	log.Infof("starting %s controller", lbc.GetName())
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
 	go lbc.svcController.Run(lbc.stopCh)
@@ -398,7 +398,7 @@ func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
 	go lbc.lbProvider.Run(utils.NewTaskQueue(lbc.updateIngressStatus))
 
 	<-lbc.stopCh
-	logrus.Infof("shutting down %s controller", lbc.GetName())
+	log.Infof("shutting down %s controller", lbc.GetName())
 }
 
 func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig, error) {
@@ -433,7 +433,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 			secretName := tls.SecretName
 			cert, err = lbc.getCertificate(secretName, ing.Namespace)
 			if err != nil {
-				logrus.Errorf("Failed to fetch secret by name [%s]: %v", secretName, err)
+				log.Errorf("Failed to fetch secret by name [%s]: %v", secretName, err)
 			} else {
 				//TODO - add SNI support
 				//today we get only first certificate
@@ -442,7 +442,7 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 		}
 
 		for _, rule := range ing.Spec.Rules {
-			logrus.Debugf("Processing ingress rule %v", rule)
+			log.Debugf("Processing ingress rule %v", rule)
 			// process http rules only
 			if rule.IngressRuleValue.HTTP == nil {
 				continue
@@ -661,7 +661,7 @@ func (lbc *loadBalancerController) getCertificate(secretName string, namespace s
 	var cert, key string
 	secret, err := lbc.client.Secrets(namespace).Get(secretName)
 	if err != nil {
-		logrus.Debugf("Cert [%s] needs to be fetched: %v", secretName, err)
+		log.Debugf("Cert [%s] needs to be fetched: %v", secretName, err)
 		fetch = true
 	} else {
 		certData, ok := secret.Data[api.TLSCertKey]
@@ -710,12 +710,12 @@ func (lbc *loadBalancerController) getService(svcName string, namespace string) 
 	svcKey := fmt.Sprintf("%v/%v", namespace, svcName)
 	svcObj, svcExists, err := lbc.svcLister.Store.GetByKey(svcKey)
 	if err != nil {
-		logrus.Infof("error getting service [%s] from the cache: %v", svcKey, err)
+		log.Infof("error getting service [%s] from the cache: %v", svcKey, err)
 		return nil, err
 	}
 
 	if !svcExists {
-		logrus.Debugf("service [%s] does not exists", svcKey)
+		log.Debugf("service [%s] does not exists", svcKey)
 		return nil, nil
 	}
 
@@ -727,7 +727,7 @@ func (lbc *loadBalancerController) getService(svcName string, namespace string) 
 func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []*config.Endpoint {
 	ep, err := lbc.endpLister.GetServiceEndpoints(s)
 	if err != nil {
-		logrus.Warningf("unexpected error getting service endpoints: %v", err)
+		log.Errorf("unexpected error getting service endpoints: %v", err)
 		return []*config.Endpoint{}
 	}
 	lbEndpoints := []*config.Endpoint{}
@@ -782,7 +782,7 @@ func (lbc *loadBalancerController) Stop() error {
 		lbc.syncQueue.Shutdown()
 		lbc.ingQueue.Shutdown()
 		lbc.cleanupQueue.Shutdown()
-		logrus.Infof("shut down controller queues")
+		log.Infof("shut down controller queues")
 		return nil
 	}
 
@@ -791,19 +791,19 @@ func (lbc *loadBalancerController) Stop() error {
 
 func (lbc *loadBalancerController) removeFromIngress() {
 	ings := lbc.ingLister.Store.List()
-	logrus.Infof("updating %v Ingress rule/s", len(ings))
+	log.Infof("updating %v Ingress rule/s", len(ings))
 	for _, cur := range ings {
 		ing := cur.(*extensions.Ingress)
 
 		ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
 		currIng, err := ingClient.Get(ing.Name)
 		if err != nil {
-			logrus.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
+			log.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 			continue
 		}
 
 		for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
-			logrus.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbStatus.IP)
+			log.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbStatus.IP)
 
 			currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
 				currIng.Status.LoadBalancer.Ingress[idx+1:]...)
@@ -823,7 +823,7 @@ func (lbc *loadBalancerController) GetName() string {
 func (lbc *loadBalancerController) IsHealthy() bool {
 	_, err := lbc.client.Extensions().Ingress(api.NamespaceAll).List(api.ListOptions{})
 	if err != nil {
-		logrus.Errorf("Health check failed: unable to reach Kubernetes. Error: %#v", err)
+		log.Errorf("Health check failed: unable to reach Kubernetes. Error: %#v", err)
 		return false
 	}
 	return true

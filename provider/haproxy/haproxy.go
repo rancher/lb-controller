@@ -3,11 +3,6 @@ package haproxy
 import (
 	"bufio"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/mitchellh/go-ps"
-	"github.com/rancher/lb-controller/config"
-	"github.com/rancher/lb-controller/provider"
-	utils "github.com/rancher/lb-controller/utils"
 	"io"
 	"io/ioutil"
 	"net"
@@ -18,6 +13,12 @@ import (
 	"sync"
 	"text/template"
 	"time"
+
+	"github.com/leodotcloud/log"
+	"github.com/mitchellh/go-ps"
+	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/provider"
+	utils "github.com/rancher/lb-controller/utils"
 )
 
 func init() {
@@ -208,7 +209,7 @@ func (lbp *Provider) DrainEndpoint(ep *config.Endpoint) bool {
 	pid, err := lbp.cfg.readPid()
 
 	if err != nil {
-		logrus.Errorf("Error while reading haproxy pid %v", err)
+		log.Errorf("Error while reading haproxy pid %v", err)
 		return false
 	}
 	return lbp.drainMgr.AddEndpointForDrain(ep, pid)
@@ -226,36 +227,36 @@ func (lbp *Provider) IsEndpointDrained(ep *config.Endpoint) bool {
 		// if no check if any old pid exists - if yes not drained yet. If no, drained.
 		currentPid, err := lbp.cfg.readPid()
 		if err != nil {
-			logrus.Errorf("Error while reading haproxy pid %v", err)
+			log.Errorf("Error while reading haproxy pid %v", err)
 			return false
 		}
 		if pid != currentPid {
 			if pid != "" {
 				pidInt, err := strconv.Atoi(pid)
 				if err != nil {
-					logrus.Errorf("Error %v while converting pid %v", err, pid)
+					log.Errorf("Error %v while converting pid %v", err, pid)
 				} else {
 					process, err := ps.FindProcess(pidInt)
 					if err != nil {
-						logrus.Errorf("Error %v while listing haproxy process by pid %v", err, pid)
+						log.Errorf("Error %v while listing haproxy process by pid %v", err, pid)
 					}
 					if err == nil && process == nil {
 						return true
 					}
-					logrus.Infof("IsEndpointDrained: old haproxy process found pid %v, name %v", pid, process.Executable())
+					log.Infof("IsEndpointDrained: old haproxy process found pid %v, name %v", pid, process.Executable())
 				}
 			} else {
 				//check if current pid stats are scur = 0 AND no other pid exists.
 				//read stats
 				scur, _, err := lbp.drainMgr.readCurrentStats(ep)
 				if err != nil {
-					logrus.Errorf("IsEndpointDrained: Error %v", err)
+					log.Errorf("IsEndpointDrained: Error %v", err)
 					return false
 				}
-				logrus.Debugf("IsEndpointDrained: scur %v Endpoint %v", scur, ep.Name)
+				log.Debugf("IsEndpointDrained: scur %v Endpoint %v", scur, ep.Name)
 				oldPidExists, err := lbp.drainMgr.olderPidExists()
 				if err != nil {
-					logrus.Errorf("AddEndpointForDrain: Error %v listing older haproxy processes, drain till timeout %v", err, ep.DrainTimeout)
+					log.Errorf("AddEndpointForDrain: Error %v listing older haproxy processes, drain till timeout %v", err, ep.DrainTimeout)
 					return false
 				}
 				if !oldPidExists && scur == "0" {
@@ -266,10 +267,10 @@ func (lbp *Provider) IsEndpointDrained(ep *config.Endpoint) bool {
 			//read stats
 			scur, _, err := lbp.drainMgr.readCurrentStats(ep)
 			if err != nil {
-				logrus.Errorf("IsEndpointDrained: Error %v", err)
+				log.Errorf("IsEndpointDrained: Error %v", err)
 				return false
 			}
-			logrus.Debugf("IsEndpointDrained: scur %v Endpoint %v", scur, ep.Name)
+			log.Debugf("IsEndpointDrained: scur %v Endpoint %v", scur, ep.Name)
 			if scur == "0" {
 				return true
 			}
@@ -292,12 +293,12 @@ func (dm *drainMgr) readCurrentStats(ep *config.Endpoint) (string, []string, err
 	}
 
 	for _, endpointStat := range stats[ep.Name] {
-		logrus.Debugf("scur for %v is: %v", endpointStat["pxname"]+"/"+ep.Name, endpointStat["scur"])
+		log.Debugf("scur for %v is: %v", endpointStat["pxname"]+"/"+ep.Name, endpointStat["scur"])
 		if escur, ok := endpointStat["scur"]; ok {
 			if escur != "" {
 				escurInt, err := strconv.Atoi(escur)
 				if err != nil {
-					logrus.Errorf("Error %v while converting scur %v, defaulting to 0", err, escur)
+					log.Errorf("Error %v while converting scur %v, defaulting to 0", err, escur)
 					escurInt = 0
 				}
 				totalScur = totalScur + escurInt
@@ -320,7 +321,7 @@ func (dm *drainMgr) olderPidExists() (bool, error) {
 	}
 	processes := string(output)
 	if string(output) != "" {
-		logrus.Debugf("Output of old process %v", processes)
+		log.Debugf("Output of old process %v", processes)
 	}
 
 	parts := strings.Split(processes, " ")
@@ -335,7 +336,7 @@ func (dm *drainMgr) AddEndpointForDrain(ep *config.Endpoint, pid string) bool {
 	if ep != nil && ep.Name != "" {
 		scur, pxnames, err := dm.readCurrentStats(ep)
 		if err != nil {
-			logrus.Errorf("AddEndpointForDrain: Error %v", err)
+			log.Errorf("AddEndpointForDrain: Error %v", err)
 			return false
 		}
 		//set weight to zero on the socket anyway to stop accepting new connections
@@ -343,7 +344,7 @@ func (dm *drainMgr) AddEndpointForDrain(ep *config.Endpoint, pid string) bool {
 		for _, pxname := range pxnames {
 			err = dm.SetWeightForDrain(pxname)
 			if err != nil {
-				logrus.Errorf("AddEndpointForDrain: Error %v setting weight via socket for Endpoint backend %v", err, pxname)
+				log.Errorf("AddEndpointForDrain: Error %v setting weight via socket for Endpoint backend %v", err, pxname)
 				setWeightFailed = true
 			}
 		}
@@ -352,17 +353,17 @@ func (dm *drainMgr) AddEndpointForDrain(ep *config.Endpoint, pid string) bool {
 			return false
 		}
 
-		logrus.Debugf("AddEndpointForDrain: scur %v Endpoint %v", scur, ep.Name)
+		log.Debugf("AddEndpointForDrain: scur %v Endpoint %v", scur, ep.Name)
 		if scur == "0" {
 			//stats are zero on the current pid, check if any older pid around.
 			oldPidExists, err := dm.olderPidExists()
 			if err != nil {
-				logrus.Errorf("AddEndpointForDrain: Error %v listing older haproxy processes, drain till timeout %v", err, ep.DrainTimeout)
+				log.Errorf("AddEndpointForDrain: Error %v listing older haproxy processes, drain till timeout %v", err, ep.DrainTimeout)
 			}
-			logrus.Debugf("AddEndpointForDrain: pid %v oldpid %v", pid, oldPidExists)
+			log.Debugf("AddEndpointForDrain: pid %v oldpid %v", pid, oldPidExists)
 
 			if !oldPidExists {
-				logrus.Debugf("AddEndpointForDrain: Drain not needed for Endpoint %v", ep.Name)
+				log.Debugf("AddEndpointForDrain: Drain not needed for Endpoint %v", ep.Name)
 				return false
 			}
 			pid = ""
@@ -381,7 +382,7 @@ func (dm *drainMgr) RemoveEndpointFromDrain(ep *config.Endpoint) {
 		dm.mu.Lock()
 		delete(dm.drainList, ep.Name)
 		dm.mu.Unlock()
-		logrus.Info("Removed Endpoint %v From Drain", ep)
+		log.Info("Removed Endpoint %v From Drain", ep)
 	}
 }
 
@@ -417,7 +418,7 @@ func (dm *drainMgr) ReadStats() (map[string][]Stat, error) {
 
 		values := strings.Split(line, ",")
 		if len(keys) != len(values) {
-			logrus.Errorf("Invalid stat line: %s", line)
+			log.Errorf("Invalid stat line: %s", line)
 		}
 
 		stat := Stat{}
@@ -465,7 +466,7 @@ func (cfg *haproxyConfig) start() error {
 	output, err := exec.Command("sh", "-c", cfg.StartCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	if string(output) != "" {
-		logrus.Info(msg)
+		log.Info(msg)
 	}
 	if err != nil {
 		return fmt.Errorf("error starting %v: %v", msg, err)
@@ -477,7 +478,7 @@ func (cfg *haproxyConfig) reload() error {
 	output, err := exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	if string(output) != "" {
-		logrus.Info(msg)
+		log.Info(msg)
 	}
 	if err != nil {
 		return fmt.Errorf("error reloading %v: %v", msg, err)
@@ -500,7 +501,7 @@ func (lbp *Provider) Run(syncEndpointsQueue *utils.TaskQueue) {
 }
 
 func (lbp *Provider) Stop() error {
-	logrus.Infof("Shutting down provider %v", lbp.GetName())
+	log.Infof("Shutting down provider %v", lbp.GetName())
 	close(lbp.stopCh)
 	return nil
 }

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/leodotcloud/log"
 	"github.com/rancher/lb-controller/config"
 )
 
@@ -393,9 +393,9 @@ func validateCustomConfig(name string, customConfig string) (bool, error) {
 	result := customConfig == resp
 	if !result {
 		err := ioutil.WriteFile("/tmp/dat1", []byte(customConfig), 0644)
-		logrus.Infof("Error is:\n%v", err)
-		logrus.Infof("Expected result:\n%s", resp)
-		logrus.Infof("Actual result:\n%s", customConfig)
+		log.Infof("Error is:\n%v", err)
+		log.Infof("Expected result:\n%s", resp)
+		log.Infof("Actual result:\n%s", customConfig)
 	}
 	return result, nil
 }

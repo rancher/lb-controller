@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/leodotcloud/log"
 	"github.com/patrickmn/go-cache"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
@@ -22,7 +22,7 @@ import (
 func init() {
 	lbc, err := newGLBController()
 	if err != nil {
-		logrus.Fatalf("%v", err)
+		log.Fatalf("%v", err)
 	}
 
 	controller.RegisterController(lbc.GetName(), lbc)
@@ -33,7 +33,7 @@ func (lbc *glbController) Init(metadataURL string) {
 
 	metadataClient, err := metadata.NewClientAndWait(metadataURL)
 	if err != nil {
-		logrus.Fatalf("Error initiating metadata client: %v", err)
+		log.Fatalf("Error initiating metadata client: %v", err)
 	}
 
 	lbc.metaFetcher = rancher.RMetaFetcher{
@@ -95,18 +95,18 @@ func (lbc *glbController) sync(key string) {
 		//skip syncing if controller is being shut down
 		return
 	}
-	logrus.Debugf("Syncing up LB")
+	log.Debugf("Syncing up LB")
 	requeue := false
 	cfgs, err := lbc.GetLBConfigs()
 	if err == nil {
 		for _, cfg := range cfgs {
 			if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
-				logrus.Errorf("Failed to apply lb config on provider: %v", err)
+				log.Errorf("Failed to apply lb config on provider: %v", err)
 				requeue = true
 			}
 		}
 	} else {
-		logrus.Errorf("Failed to get lb config: %v", err)
+		log.Errorf("Failed to get lb config: %v", err)
 		requeue = true
 	}
 
@@ -156,7 +156,7 @@ func (lbc *glbController) GetGLBConfigs(glbSvc metadata.Service) ([]*config.Load
 			if !rancher.IsActiveService(&lbSvc) {
 				// cleanup public endpoints
 				eps := []client.PublicEndpoint{}
-				logrus.Debugf("cleaning up endpoints for inactive lb uuid [%v]", lbSvc.UUID)
+				log.Debugf("cleaning up endpoints for inactive lb uuid [%v]", lbSvc.UUID)
 				if err := lbc.updateEndpoints(&lbSvc, eps); err != nil {
 					return nil, err
 				}
@@ -212,14 +212,14 @@ func (lbc *glbController) GetGLBConfigs(glbSvc metadata.Service) ([]*config.Load
 
 func (lbc *glbController) needEndpointsUpdate(lbSvc *metadata.Service, eps []client.PublicEndpoint) bool {
 	previousEps, _ := lbc.endpointsCache.Get(lbSvc.UUID)
-	logrus.Debugf("previous endpoints are %v", previousEps)
+	log.Debugf("previous endpoints are %v", previousEps)
 	return !reflect.DeepEqual(previousEps, eps)
 }
 
 func (lbc *glbController) updateEndpoints(lbSvc *metadata.Service, eps []client.PublicEndpoint) error {
-	logrus.Debugf("endpoints are %v", eps)
+	log.Debugf("endpoints are %v", eps)
 	if !lbc.needEndpointsUpdate(lbSvc, eps) {
-		logrus.Debug("no need to update endpoints")
+		log.Debug("no need to update endpoints")
 		return nil
 	}
 	if err := lbc.rancherController.CertFetcher.UpdateEndpoints(lbSvc, eps); err != nil {
@@ -239,7 +239,7 @@ func getEndpoints(glbSvc *metadata.Service, lbPort int) ([]client.PublicEndpoint
 				return nil, err
 			}
 			if port != lbPort {
-				logrus.Infof("ports are diff, %v and %v", port, lbPort)
+				log.Infof("ports are diff, %v and %v", port, lbPort)
 				continue
 			}
 			pE := client.PublicEndpoint{
@@ -344,7 +344,7 @@ func (lbc *glbController) mergeConfigs(glbSvc metadata.Service, configs []*confi
 }
 
 func (lbc *glbController) Run(provider provider.LBProvider) {
-	logrus.Infof("starting %s controller", lbc.GetName())
+	log.Infof("starting %s controller", lbc.GetName())
 	lbc.lbProvider = provider
 	lbc.rancherController.LBProvider = provider
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
@@ -358,7 +358,7 @@ func (lbc *glbController) Run(provider provider.LBProvider) {
 
 func (lbc *glbController) Stop() error {
 	if !lbc.shutdown {
-		logrus.Infof("Shutting down %s controller", lbc.GetName())
+		log.Infof("Shutting down %s controller", lbc.GetName())
 		//stop the provider
 		if err := lbc.lbProvider.Stop(); err != nil {
 			return err
@@ -375,7 +375,7 @@ func (lbc *glbController) IsHealthy() bool {
 }
 
 func (lbc *glbController) ScheduleApplyConfig(string) {
-	logrus.Debug("Scheduling apply config")
+	log.Debug("Scheduling apply config")
 	lbc.syncQueue.Enqueue(lbc.GetName())
 }
 

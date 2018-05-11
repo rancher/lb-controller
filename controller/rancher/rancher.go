@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/leodotcloud/log"
 	revents "github.com/rancher/event-subscriber/events"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
@@ -24,7 +24,7 @@ import (
 func init() {
 	lbc, err := NewLoadBalancerController()
 	if err != nil {
-		logrus.Fatalf("%v", err)
+		log.Fatalf("%v", err)
 	}
 
 	controller.RegisterController(lbc.GetName(), lbc)
@@ -33,50 +33,50 @@ func init() {
 func (lbc *LoadBalancerController) Init(metadataURL string) {
 	cattleURL := os.Getenv("CATTLE_URL")
 	if len(cattleURL) == 0 {
-		logrus.Fatalf("CATTLE_URL is not set, fail to init Rancher LB provider")
+		log.Fatalf("CATTLE_URL is not set, fail to init Rancher LB provider")
 	}
 
 	cattleEnvAdminAccessKey := os.Getenv("CATTLE_ENVIRONMENT_ADMIN_ACCESS_KEY")
 	if len(cattleEnvAdminAccessKey) == 0 {
-		logrus.Fatalf("CATTLE_ENVIRONMENT_ADMIN_ACCESS_KEY is not set, fail to init of Rancher LB provider")
+		log.Fatalf("CATTLE_ENVIRONMENT_ADMIN_ACCESS_KEY is not set, fail to init of Rancher LB provider")
 	}
 
 	cattleEnvAdminSecretKey := os.Getenv("CATTLE_ENVIRONMENT_ADMIN_SECRET_KEY")
 	if len(cattleEnvAdminSecretKey) == 0 {
-		logrus.Fatalf("CATTLE_ENVIRONMENT_ADMIN_SECRET_KEY is not set, fail to init of Rancher LB provider")
+		log.Fatalf("CATTLE_ENVIRONMENT_ADMIN_SECRET_KEY is not set, fail to init of Rancher LB provider")
 	}
 
 	cattleAgentAccessKey := os.Getenv("CATTLE_AGENT_ACCESS_KEY")
 	if len(cattleAgentAccessKey) == 0 {
-		logrus.Fatalf("CATTLE_AGENT_ACCESS_KEY is not set, fail to init of Rancher LB provider")
+		log.Fatalf("CATTLE_AGENT_ACCESS_KEY is not set, fail to init of Rancher LB provider")
 	}
 
 	cattleAgentSecretKey := os.Getenv("CATTLE_AGENT_SECRET_KEY")
 	if len(cattleAgentSecretKey) == 0 {
-		logrus.Fatalf("CATTLE_AGENT_SECRET_KEY is not set, fail to init of Rancher LB provider")
+		log.Fatalf("CATTLE_AGENT_SECRET_KEY is not set, fail to init of Rancher LB provider")
 	}
 
 	pollIntervalStr := os.Getenv("CERTS_POLL_INTERVAL")
 	if len(pollIntervalStr) == 0 {
-		logrus.Debugf("CERTS_POLL_INTERVAL is not set, will use default 30 seconds")
+		log.Debugf("CERTS_POLL_INTERVAL is not set, will use default 30 seconds")
 		pollIntervalStr = "30"
 	}
 
 	forceUpdateIntStr := os.Getenv("CERTS_FORCE_UPDATE_INTERVAL")
 	if len(forceUpdateIntStr) == 0 {
-		logrus.Debugf("CERTS_FORCE_UPDATE_INTERVAL is not set, will use default 300 seconds")
+		log.Debugf("CERTS_FORCE_UPDATE_INTERVAL is not set, will use default 300 seconds")
 		forceUpdateIntStr = "300"
 	}
 
 	certFName := os.Getenv("CERT_FILE_NAME")
 	if len(certFName) == 0 {
-		logrus.Debugf("CERT_FILE_NAME is not set, will use default '%v'", DefaultCertName)
+		log.Debugf("CERT_FILE_NAME is not set, will use default '%v'", DefaultCertName)
 		certFName = DefaultCertName
 	}
 
 	keyFName := os.Getenv("KEY_FILE_NAME")
 	if len(keyFName) == 0 {
-		logrus.Debugf("KEY_FILE_NAME is not set, will use default '%v'", DefaultKeyName)
+		log.Debugf("KEY_FILE_NAME is not set, will use default '%v'", DefaultKeyName)
 		keyFName = DefaultKeyName
 	}
 
@@ -88,21 +88,21 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 
 	client, err := client.NewRancherClient(opts)
 	if err != nil {
-		logrus.Fatalf("Failed to create Rancher client %v", err)
+		log.Fatalf("Failed to create Rancher client %v", err)
 	}
 
 	pollInterval, err := strconv.Atoi(pollIntervalStr)
 	if err != nil {
-		logrus.Fatalf("Failed to convert CERTS_POLL_INTERVAL %v", err)
+		log.Fatalf("Failed to convert CERTS_POLL_INTERVAL %v", err)
 	}
 	forceUpdateInt, err := strconv.ParseFloat(forceUpdateIntStr, 64)
 	if err != nil {
-		logrus.Fatalf("Failed to convert CERTS_FORCE_UPDATE_INTERVAL %v", err)
+		log.Fatalf("Failed to convert CERTS_FORCE_UPDATE_INTERVAL %v", err)
 	}
 
 	metadataClient, err := metadata.NewClientAndWait(metadataURL)
 	if err != nil {
-		logrus.Fatalf("Error initiating metadata client: %v", err)
+		log.Fatalf("Error initiating metadata client: %v", err)
 	}
 
 	lbc.MetaFetcher = RMetaFetcher{
@@ -111,7 +111,7 @@ func (lbc *LoadBalancerController) Init(metadataURL string) {
 
 	lbSvc, err := lbc.MetaFetcher.GetSelfService()
 	if err != nil {
-		logrus.Fatalf("Error reading self service metadata: %v", err)
+		log.Fatalf("Error reading self service metadata: %v", err)
 	}
 
 	certDir := lbSvc.Labels["io.rancher.lb_service.cert_dir"]
@@ -182,7 +182,7 @@ func (lbc *LoadBalancerController) GetName() string {
 }
 
 func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
-	logrus.Infof("starting %s controller", lbc.GetName())
+	log.Infof("starting %s controller", lbc.GetName())
 	lbc.LBProvider = provider
 
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
@@ -193,7 +193,7 @@ func (lbc *LoadBalancerController) Run(provider provider.LBProvider) {
 		for {
 			err := lbc.EventsHandler.Subscribe()
 			if err != nil {
-				logrus.Errorf("Error subscribing to events: %v", err)
+				log.Errorf("Error subscribing to events: %v", err)
 			} else {
 				break
 			}
@@ -219,13 +219,13 @@ func (mf RMetaFetcher) GetServicesFromRegionEnvironment(regionName string, envNa
 }
 
 func (lbc *LoadBalancerController) ScheduleApplyConfig(string) {
-	logrus.Debug("Scheduling apply config")
+	log.Debug("Scheduling apply config")
 	lbc.syncQueue.Enqueue(lbc.GetName())
 }
 
 func (lbc *LoadBalancerController) IsEndpointUpForDrain(ep *config.Endpoint) bool {
 	if lbc.LBProvider.IsEndpointUpForDrain(ep) {
-		logrus.Debug("DrainEndpoint: The endpoint is already in drainlist")
+		log.Debug("DrainEndpoint: The endpoint is already in drainlist")
 		return true
 	}
 	return false
@@ -245,7 +245,7 @@ func (lbc *LoadBalancerController) RemoveEndpointFromDrain(ep *config.Endpoint) 
 
 func (lbc *LoadBalancerController) Stop() error {
 	if !lbc.shutdown {
-		logrus.Infof("Shutting down %s controller", lbc.GetName())
+		log.Infof("Shutting down %s controller", lbc.GetName())
 		//stop the provider
 		if err := lbc.LBProvider.Stop(); err != nil {
 			return err
@@ -291,7 +291,7 @@ func (lbc *LoadBalancerController) BuildConfigFromMetadata(lbName, envUUID, self
 	}
 	certs = append(certs, alternateCerts...)
 
-	logrus.Debugf("Found %v certs", len(certs))
+	log.Debugf("Found %v certs", len(certs))
 
 	allBe := make(map[string]*config.BackendService)
 	allEps := make(map[string]map[string]string)
@@ -527,7 +527,7 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 
 		svcs, err := lbc.GetRegionServices(&localsvcs, regionName, envName)
 		if err != nil {
-			logrus.Warnf("couldn't find services from region %v", err)
+			log.Warnf("couldn't find services from region %v", err)
 			continue
 		}
 
@@ -783,18 +783,18 @@ func (lbc *LoadBalancerController) sync(key string) {
 		//skip syncing if controller is being shut down
 		return
 	}
-	logrus.Debugf("Syncing up LB")
+	log.Debugf("Syncing up LB")
 	requeue := false
 	cfgs, err := lbc.GetLBConfigs()
 	if err == nil {
 		for _, cfg := range cfgs {
 			if err := lbc.LBProvider.ApplyConfig(cfg); err != nil {
-				logrus.Errorf("Failed to apply lb config on provider: %v", err)
+				log.Errorf("Failed to apply lb config on provider: %v", err)
 				requeue = true
 			}
 		}
 	} else {
-		logrus.Errorf("Failed to get lb config: %v", err)
+		log.Errorf("Failed to get lb config: %v", err)
 		requeue = true
 	}
 
