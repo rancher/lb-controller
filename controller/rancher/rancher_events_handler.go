@@ -2,12 +2,13 @@ package rancher
 
 import (
 	"fmt"
-	"github.com/Sirupsen/logrus"
+	"sync"
+	"time"
+
+	"github.com/leodotcloud/log"
 	revents "github.com/rancher/event-subscriber/events"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
-	"sync"
-	"time"
 )
 
 type EventsHandler interface {
@@ -42,7 +43,7 @@ func (ehandler *REventsHandler) Subscribe() error {
 		sp := revents.SkippingWorkerPool(250, nil)
 		for {
 			if err := router.RunWithWorkerPool(sp); err != nil {
-				logrus.Debugf("Exiting subscriber: %v", err)
+				log.Debugf("Exiting subscriber: %v", err)
 			}
 			time.Sleep(time.Second)
 		}
@@ -52,24 +53,19 @@ func (ehandler *REventsHandler) Subscribe() error {
 }
 
 func (ehandler *REventsHandler) handle(event *revents.Event, cli *client.RancherClient) error {
-	log := logrus.WithFields(logrus.Fields{
-		"eventName":  event.Name,
-		"eventID":    event.ID,
-		"resourceID": event.ResourceID,
-	})
-	log.Debugf("Rancher event: %#v", event)
+	log.Debugf("Rancher event: %#v eventName=%v eventID=%v resourceID=%v", event, event.Name, event.ID, event.ResourceID)
 
 	if event.Name == "target.drain" {
 		sendReply, err := ehandler.HandleDrainEvent(event, cli)
 		if err != nil {
-			log.Errorf("Error handling drain event: %#v", err)
+			log.Errorf("Error handling drain event: %#v eventName=%v eventID=%v resourceID=%v", err, event.Name, event.ID, event.ResourceID)
 			return err
 		}
 		if !sendReply {
 			return nil
 		}
 		if err := ehandler.CreateAndPublishReply(event, cli); err != nil {
-			log.Errorf("Error replying to the event: %#v", err)
+			log.Errorf("Error replying to the event: %#v eventName=%v eventID=%v resourceID=%v", err, event.Name, event.ID, event.ResourceID)
 			return err
 		}
 	}
@@ -92,7 +88,7 @@ func (ehandler *REventsHandler) PublishReply(reply *client.Publish, apiClient *c
 
 func (ehandler *REventsHandler) CreateAndPublishReply(event *revents.Event, cli *client.RancherClient) error {
 	reply := ehandler.NewReply(event)
-	logrus.Infof("New reply: %#v created to the event: %#v", reply, event)
+	log.Infof("New reply: %#v created to the event: %#v", reply, event)
 
 	if reply.Name == "" {
 		return nil
@@ -122,7 +118,7 @@ func (ehandler *REventsHandler) HandleDrainEvent(event *revents.Event, cli *clie
 
 	//form the endpoint from the eventVO
 
-	logrus.Infof("Received target.drain IP: %v, drainTimeout: %v, eventID: %v, resourceID %v", event.Data["targetIPaddress"], event.Data["drainTimeout"], event.ID, event.ResourceID)
+	log.Infof("Received target.drain IP: %v, drainTimeout: %v, eventID: %v, resourceID %v", event.Data["targetIPaddress"], event.Data["drainTimeout"], event.ID, event.ResourceID)
 
 	primaryIP, ok := event.Data["targetIPaddress"]
 
@@ -152,7 +148,7 @@ func (ehandler *REventsHandler) HandleDrainEvent(event *revents.Event, cli *clie
 				go ehandler.pollOnDrainResults(ep, event, cli)
 				go ehandler.doOnDrainTimeout(ep, event, cli)
 			} else {
-				logrus.Infof("[Endpoint IP: %v, name: %v] Result: Drain not needed", ep.IP, ep.Name)
+				log.Infof("[Endpoint IP: %v, name: %v] Result: Drain not needed", ep.IP, ep.Name)
 				//send reply
 				return true, nil
 			}
@@ -199,22 +195,22 @@ func (ehandler *REventsHandler) pollOnDrainResults(ep *config.Endpoint, event *r
 	for {
 		isUpForDrain := ehandler.CheckOnEvent(ep)
 		if !isUpForDrain {
-			logrus.Debugf("[Endpoint IP: %v, name: %v] is not in drainList anymore, stopping poll", ep.IP, ep.Name)
+			log.Debugf("[Endpoint IP: %v, name: %v] is not in drainList anymore, stopping poll", ep.IP, ep.Name)
 			if err := ehandler.CreateAndPublishReply(event, cli); err != nil {
-				logrus.Errorf("Error replying to the event: %#v", err)
+				log.Errorf("Error replying to the event: %#v", err)
 			}
 			break
 		}
 
 		drained := ehandler.PollStatus(ep)
-		logrus.Debugf("Check ep %v is drained: %v", ep.Name, drained)
+		log.Debugf("Check ep %v is drained: %v", ep.Name, drained)
 
 		if drained {
-			logrus.Infof("[Endpoint IP: %v, name: %v] Result: Drain complete, stopping poll", ep.IP, ep.Name)
+			log.Infof("[Endpoint IP: %v, name: %v] Result: Drain complete, stopping poll", ep.IP, ep.Name)
 			ehandler.DoOnTimeout(ep)
 			err := ehandler.replyToEvent(ep, event, cli)
 			if err != nil {
-				logrus.Errorf("Error: %v", err)
+				log.Errorf("Error: %v", err)
 			}
 			break
 		}
@@ -225,32 +221,32 @@ func (ehandler *REventsHandler) pollOnDrainResults(ep *config.Endpoint, event *r
 func (ehandler *REventsHandler) doOnDrainTimeout(ep *config.Endpoint, event *revents.Event, cli *client.RancherClient) {
 	drainTime, err := time.ParseDuration(ep.DrainTimeout + "ms")
 	if err != nil {
-		logrus.Infof("Error %v parsing drainTimeout %v", err, ep.DrainTimeout)
+		log.Infof("Error %v parsing drainTimeout %v", err, ep.DrainTimeout)
 		return
 	}
 
 	ticker := time.NewTicker(drainTime)
 	for t := range ticker.C {
-		logrus.Debugf("Tick to check DrainTimeout for endpoint %v, Tick at %v", ep.Name, t)
+		log.Debugf("Tick to check DrainTimeout for endpoint %v, Tick at %v", ep.Name, t)
 		isUpForDrain := ehandler.CheckOnEvent(ep)
 		if !isUpForDrain {
-			logrus.Debugf("[Endpoint IP: %v, name: %v] is not in drainList anymore, should have finished draining earlier", ep.IP, ep.Name)
+			log.Debugf("[Endpoint IP: %v, name: %v] is not in drainList anymore, should have finished draining earlier", ep.IP, ep.Name)
 			if err := ehandler.CreateAndPublishReply(event, cli); err != nil {
-				logrus.Errorf("Error replying to the event: %#v", err)
+				log.Errorf("Error replying to the event: %#v", err)
 			}
 			break
 		}
-		logrus.Infof("[Endpoint IP: %v, name: %v] Result: DrainTimeout hit", ep.IP, ep.Name)
+		log.Infof("[Endpoint IP: %v, name: %v] Result: DrainTimeout hit", ep.IP, ep.Name)
 		//check if drained, if not remove from drain, reply to the event
 		drained := ehandler.PollStatus(ep)
 		if !drained {
-			logrus.Debugf("[Endpoint IP: %v, name: %v] Not drained yet, but stopping draining", ep.IP, ep.Name)
+			log.Debugf("[Endpoint IP: %v, name: %v] Not drained yet, but stopping draining", ep.IP, ep.Name)
 			ehandler.DoOnTimeout(ep)
 		}
 
 		err := ehandler.replyToEvent(ep, event, cli)
 		if err != nil {
-			logrus.Errorf("Error: %v", err)
+			log.Errorf("Error: %v", err)
 		}
 		ticker.Stop()
 	}

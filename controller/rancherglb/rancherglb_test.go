@@ -1,7 +1,6 @@
 package rancherglb
 
 import (
-	// "github.com/Sirupsen/logrus"
 	"strings"
 	"testing"
 	"time"

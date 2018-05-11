@@ -6,7 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/leodotcloud/log"
+	logserver "github.com/leodotcloud/log/server"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
 	"github.com/urfave/cli"
@@ -21,14 +22,12 @@ var (
 	lbp provider.LBProvider
 )
 
-func init() {
-	if os.Getenv("RANCHER_DEBUG") == "true" {
-		logrus.SetLevel(logrus.DebugLevel)
-	}
-	logrus.SetOutput(os.Stdout)
-}
-
 func main() {
+	logserver.StartServerWithDefaults()
+
+	if os.Getenv("RANCHER_DEBUG") == "true" {
+		log.SetLevelString("debug")
+	}
 	app := cli.NewApp()
 
 	app.Flags = []cli.Flag{
@@ -48,20 +47,20 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		logrus.Infof("Starting Rancher LB service")
+		log.Infof("Starting Rancher LB service")
 		lbControllerName = c.String("controller")
 		lbProviderName = c.String("provider")
 		metadataAddress = c.String("metadata-address")
 		lbc = controller.GetController(lbControllerName, fmt.Sprintf("http://%s/2016-07-29", metadataAddress))
 		if lbc == nil {
-			logrus.Fatalf("Unable to find controller by name %s", lbControllerName)
+			log.Fatalf("Unable to find controller by name %s", lbControllerName)
 		}
 		lbp = provider.GetProvider(lbProviderName)
 		if lbp == nil {
-			logrus.Fatalf("Unable to find provider by name %s", lbProviderName)
+			log.Fatalf("Unable to find provider by name %s", lbProviderName)
 		}
-		logrus.Infof("LB controller: %s", lbc.GetName())
-		logrus.Infof("LB provider: %s", lbp.GetName())
+		log.Infof("LB controller: %s", lbc.GetName())
+		log.Infof("LB provider: %s", lbp.GetName())
 
 		go handleSigterm(lbc, lbp)
 
@@ -78,14 +77,14 @@ func handleSigterm(lbc controller.LBController, lbp provider.LBProvider) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM)
 	<-signalChan
-	logrus.Infof("Received SIGTERM, shutting down")
+	log.Infof("Received SIGTERM, shutting down")
 
 	exitCode := 0
 	// stop the controller
 	if err := lbc.Stop(); err != nil {
-		logrus.Infof("Error during shutdown %v", err)
+		log.Infof("Error during shutdown %v", err)
 		exitCode = 1
 	}
-	logrus.Infof("Exiting with %v", exitCode)
+	log.Infof("Exiting with %v", exitCode)
 	os.Exit(exitCode)
 }

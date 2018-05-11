@@ -2,10 +2,6 @@ package rancher
 
 import (
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher-metadata/metadata"
-	"github.com/rancher/go-rancher/v2"
-	"github.com/rancher/lb-controller/config"
 	"io/ioutil"
 	"os"
 	"path"
@@ -13,6 +9,11 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/leodotcloud/log"
+	"github.com/rancher/go-rancher-metadata/metadata"
+	"github.com/rancher/go-rancher/v2"
+	"github.com/rancher/lb-controller/config"
 )
 
 const (
@@ -74,7 +75,7 @@ func (fetcher *RCertificateFetcher) FetchCertificates(lbMeta *LBMetadata, isDefa
 			if fetcher.checkIfInitPollDone() {
 				if isDefaultCert {
 					if fetcher.DefaultCertDir != "" {
-						logrus.Debugf("Found defaultCertDir label %v", fetcher.DefaultCertDir)
+						log.Debugf("Found defaultCertDir label %v", fetcher.DefaultCertDir)
 						defaultCert = fetcher.ReadDefaultCertificate(fetcher.DefaultCertDir)
 						if defaultCert != nil {
 							certs = append(certs, defaultCert)
@@ -83,14 +84,14 @@ func (fetcher *RCertificateFetcher) FetchCertificates(lbMeta *LBMetadata, isDefa
 				} else {
 					//read all the certificates from the mounted certDir
 					if fetcher.CertDir != "" {
-						logrus.Debugf("Found certDir label %v", fetcher.CertDir)
+						log.Debugf("Found certDir label %v", fetcher.CertDir)
 						certsFromDir := fetcher.ReadAllCertificatesFromDir(fetcher.CertDir)
 						certs = append(certs, certsFromDir...)
 					}
 				}
 				break
 			} else {
-				logrus.Debugf("Waiting for InitPollDone()")
+				log.Debugf("Waiting for InitPollDone()")
 				time.Sleep(time.Duration(2) * time.Second)
 			}
 		}
@@ -154,14 +155,14 @@ func (fetcher *RCertificateFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps
 		return fmt.Errorf("Coudln't get LB service by uuid [%s]. Error: %#v", lbSvc.UUID, err)
 	}
 	if len(lbs.Data) == 0 {
-		logrus.Infof("Failed to find lb by uuid %s", lbSvc.UUID)
+		log.Infof("Failed to find lb by uuid %s", lbSvc.UUID)
 		return nil
 	}
 	lb := lbs.Data[0]
 
 	toUpdate := make(map[string]interface{})
 	toUpdate["publicEndpoints"] = eps
-	logrus.Infof("Updating Rancher LB [%s] in stack [%s] with the new public endpoints [%v] ", lbSvc.Name, lbSvc.StackName, eps)
+	log.Infof("Updating Rancher LB [%s] in stack [%s] with the new public endpoints [%v] ", lbSvc.Name, lbSvc.StackName, eps)
 	if _, err := fetcher.Client.LoadBalancerService.Update(&lb, toUpdate); err != nil {
 		return fmt.Errorf("Failed to update Rancher LB [%s] in stack [%s]. Error: %#v", lbSvc.Name, lbSvc.StackName, err)
 	}
@@ -195,13 +196,13 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 	if fetcher.CertDir != "" || fetcher.DefaultCertDir != "" {
 		lastUpdated := time.Now()
 		for {
-			logrus.Debugf("Start --- LookForCertUpdates polling cert dir %v and default cert dir %v", fetcher.CertDir, fetcher.DefaultCertDir)
+			log.Debugf("Start --- LookForCertUpdates polling cert dir %v and default cert dir %v", fetcher.CertDir, fetcher.DefaultCertDir)
 			forceUpdate := false
 			certsUpdatedFlag := false
-			logrus.Debugf("lastUpdated %v", lastUpdated)
+			log.Debugf("lastUpdated %v", lastUpdated)
 
 			if time.Since(lastUpdated).Seconds() >= fetcher.forceUpdateInterval {
-				logrus.Infof("LookForCertUpdates: Executing force update as certs in cache have not been updated in: %v seconds", fetcher.forceUpdateInterval)
+				log.Infof("LookForCertUpdates: Executing force update as certs in cache have not been updated in: %v seconds", fetcher.forceUpdateInterval)
 				forceUpdate = true
 			}
 
@@ -210,21 +211,21 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 				fetcher.tempCertsMap = make(map[string]*config.Certificate)
 				err := filepath.Walk(fetcher.CertDir, fetcher.readCertificate)
 				if err != nil {
-					logrus.Errorf("LookForCertUpdates: Error %v reading certs from cert dir  %v", err, fetcher.CertDir)
+					log.Errorf("LookForCertUpdates: Error %v reading certs from cert dir  %v", err, fetcher.CertDir)
 				} else {
 					//compare with existing cache
 					if forceUpdate || !reflect.DeepEqual(fetcher.CertsCache, fetcher.tempCertsMap) {
 						if !forceUpdate {
-							logrus.Infof("LookForCertUpdates: Found an update in cert dir %v, updating the cache", fetcher.CertDir)
+							log.Infof("LookForCertUpdates: Found an update in cert dir %v, updating the cache", fetcher.CertDir)
 						} else {
-							logrus.Infof("LookForCertUpdates: Force Update triggered, updating the cache from cert dir %v", fetcher.CertDir)
+							log.Infof("LookForCertUpdates: Force Update triggered, updating the cache from cert dir %v", fetcher.CertDir)
 						}
 						//there is some change, refresh certs
 						fetcher.mu.Lock()
 						fetcher.CertsCache = make(map[string]*config.Certificate)
 						for path, newCert := range fetcher.tempCertsMap {
 							fetcher.CertsCache[path] = newCert
-							logrus.Debugf("LookForCertUpdates: Cert is reloaded in cache : %v", newCert.Name)
+							log.Debugf("LookForCertUpdates: Cert is reloaded in cache : %v", newCert.Name)
 						}
 						certsUpdatedFlag = true
 						fetcher.mu.Unlock()
@@ -237,7 +238,7 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 				fetcher.tempCertsMap = make(map[string]*config.Certificate)
 				err := filepath.Walk(fetcher.DefaultCertDir, fetcher.readCertificate)
 				if err != nil {
-					logrus.Errorf("LookForCertUpdates: Error %v reading default cert from dir  %v", err, fetcher.DefaultCertDir)
+					log.Errorf("LookForCertUpdates: Error %v reading default cert from dir  %v", err, fetcher.DefaultCertDir)
 				} else {
 					var tempDefCert *config.Certificate
 					for _, cert := range fetcher.tempCertsMap {
@@ -263,7 +264,7 @@ func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) 
 				fetcher.setInitPollDone()
 			}
 
-			logrus.Debug("Done --- LookForCertUpdates poll")
+			log.Debug("Done --- LookForCertUpdates poll")
 			time.Sleep(time.Duration(fetcher.updateCheckInterval) * time.Second)
 		}
 	}
@@ -274,7 +275,7 @@ func (fetcher *RCertificateFetcher) readCertificate(path string, f os.FileInfo, 
 		if err != nil {
 			return fmt.Errorf("Error while walking dir [%v]. Error: %v", path, err)
 		}
-		logrus.Debugf("Walking dir %v", path)
+		log.Debugf("Walking dir %v", path)
 		isCertFound := false
 		isKeyFound := false
 		cert := config.Certificate{}
@@ -287,7 +288,7 @@ func (fetcher *RCertificateFetcher) readCertificate(path string, f os.FileInfo, 
 			if !file.IsDir() {
 				contentBytes, err := fetcher.evaluatueLinkAndReadFile(path, file.Name())
 				if err != nil {
-					logrus.Errorf("Error while reading file [%v]. Error: %v", file.Name(), err)
+					log.Errorf("Error while reading file [%v]. Error: %v", file.Name(), err)
 				} else {
 					if file.Name() == fetcher.CertName {
 						isCertFound = true
@@ -302,7 +303,7 @@ func (fetcher *RCertificateFetcher) readCertificate(path string, f os.FileInfo, 
 		if isCertFound && isKeyFound {
 			fetcher.tempCertsMap[path] = &cert
 		} else if isCertFound || isKeyFound {
-			logrus.Warnf("Skipping incomplete cert found under dir [%v], [isCertFound %v] [isKeyFound %v]", path, isCertFound, isKeyFound)
+			log.Warnf("Skipping incomplete cert found under dir [%v], [isCertFound %v] [isKeyFound %v]", path, isCertFound, isKeyFound)
 		}
 	}
 	return nil

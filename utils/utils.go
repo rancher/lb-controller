@@ -1,12 +1,13 @@
 package controller
 
 import (
-	"github.com/Sirupsen/logrus"
+	"time"
+
+	"github.com/leodotcloud/log"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
-	"time"
 )
 
 var (
@@ -40,7 +41,7 @@ func (t *TaskQueue) Enqueue(obj interface{}) {
 	} else {
 		key, err := keyFunc(obj)
 		if err != nil {
-			logrus.Infof("could not get key for object %+v: %v", obj, err)
+			log.Infof("could not get key for object %+v: %v", obj, err)
 			return
 		}
 		t.queue.Add(key)
@@ -48,7 +49,7 @@ func (t *TaskQueue) Enqueue(obj interface{}) {
 }
 
 func (t *TaskQueue) Requeue(key string, err error) {
-	logrus.Debugf("requeuing %v, err %v", key, err)
+	log.Debugf("requeuing %v, err %v", key, err)
 	t.queue.Add(key)
 }
 
@@ -60,7 +61,7 @@ func (t *TaskQueue) worker() {
 			close(t.workerDone)
 			return
 		}
-		logrus.Debugf("syncing %v", key)
+		log.Debugf("syncing %v", key)
 		t.sync(key.(string))
 		t.queue.Done(key)
 	}
