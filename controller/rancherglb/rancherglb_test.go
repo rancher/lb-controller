@@ -575,8 +575,8 @@ func (p *tProvider) IsEndpointDrained(ep *config.Endpoint) bool {
 func (p *tProvider) RemoveEndpointFromDrain(ep *config.Endpoint) {
 }
 
-func (p *tProvider) GetPublicEndpoints(configName string) []string {
-	return []string{}
+func (p *tProvider) GetPublicEndpoints(configName string) ([]string, error) {
+	return []string{}, nil
 }
 
 func (p *tProvider) CleanupConfig(configName string) error {

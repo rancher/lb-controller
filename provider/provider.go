@@ -11,7 +11,7 @@ const Localhost = "localhost"
 type LBProvider interface {
 	ApplyConfig(lbConfig *config.LoadBalancerConfig) error
 	GetName() string
-	GetPublicEndpoints(configName string) []string
+	GetPublicEndpoints(configName string) ([]string, error)
 	CleanupConfig(configName string) error
 	Run(syncEndpointsQueue *utils.TaskQueue)
 	Stop() error
