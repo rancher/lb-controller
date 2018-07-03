@@ -195,9 +195,8 @@ func (lbp *Provider) GetName() string {
 	return "haproxy"
 }
 
-func (lbp *Provider) GetPublicEndpoints(configName string) []string {
-	epStr := []string{}
-	return epStr
+func (lbp *Provider) GetPublicEndpoints(configName string) ([]string, error) {
+	return []string{}, nil
 }
 
 func (lbp *Provider) IsEndpointUpForDrain(ep *config.Endpoint) bool {

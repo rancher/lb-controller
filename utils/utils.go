@@ -49,7 +49,7 @@ func (t *TaskQueue) Enqueue(obj interface{}) {
 }
 
 func (t *TaskQueue) Requeue(key string, err error) {
-	log.Debugf("requeuing %v, err %v", key, err)
+	log.Debugf("Requeuing %v, err %v", key, err)
 	t.queue.Add(key)
 }
 

@@ -107,7 +107,7 @@ func (lbp *LBProvider) lockLB(lbName string) (locks.Unlocker, error) {
 	}
 
 	if unlocker == nil {
-		return nil, fmt.Errorf("Failed to acquire lock on lb [%s]", lbName)
+		return nil, fmt.Errorf("failed to acquire lock on lb [%s]", lbName)
 	}
 	return unlocker, nil
 }
@@ -154,13 +154,13 @@ func (lbp *LBProvider) Run(syncEndpointsQueue *utils.TaskQueue) {
 	lbp.syncEndpointsQueue = syncEndpointsQueue
 	go lbp.syncEndpointsQueue.Run(time.Second, lbp.stopCh)
 
-	go lbp.syncupEndpoints()
+	go lbp.syncEndpoints()
 
 	<-lbp.stopCh
 	log.Infof("shutting down kubernetes-lb-controller")
 }
 
-func (lbp *LBProvider) syncupEndpoints() error {
+func (lbp *LBProvider) syncEndpoints() error {
 	// TODO - change to listen to state.change events
 	// figure out why events weren't received by this agent account
 	for {
@@ -204,7 +204,7 @@ func (lbp *LBProvider) deleteLBService(lb *client.LoadBalancerService, waitForRe
 	actionChannel := lbp.waitForLBAction("purge", lb)
 	_, ok := <-actionChannel
 	if !ok {
-		return fmt.Errorf("Failed to finish remove on lb [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
+		return fmt.Errorf("failed to finish remove on lb [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
 	}
 	return err
 }
@@ -235,35 +235,30 @@ func (lbp *LBProvider) IsEndpointDrained(ep *config.Endpoint) bool {
 func (lbp *LBProvider) RemoveEndpointFromDrain(ep *config.Endpoint) {
 }
 
-func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
-	epStr := []string{}
+func (lbp *LBProvider) GetPublicEndpoints(configName string) ([]string, error) {
+	var epStr []string
 	lb, err := lbp.getLBServiceForConfig(configName)
 	if err != nil {
-		log.Errorf("Failed to find LB [%s]: %v", configName, err)
-		return epStr
+		return epStr, fmt.Errorf("failed to find LB [%s]: %v", configName, err)
 	}
 	if lb == nil {
-		log.Infof("LB [%s] is not ready yet, skipping endpoint update", configName)
-		return epStr
+		return epStr, fmt.Errorf("lb [%s] is not ready yet", configName)
 	}
 
 	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
 	_, ok := <-epChannel
 	if !ok {
-		log.Infof("Couldn't get publicEndpoints for LB [%s], skipping endpoint update", lb.Name)
-		return epStr
+		return epStr, fmt.Errorf("couldn't get publicEndpoints for LB [%s]", lb.Name)
 	}
 
 	lb, err = lbp.reloadLBService(lb)
 	if err != nil {
-		log.Infof("Failed to reload LB [%s], skipping endpoint update", lb.Name)
-		return epStr
+		return epStr, fmt.Errorf("lb [%s] is not ready yet", configName)
 	}
 
 	eps := lb.PublicEndpoints
 	if len(eps) == 0 {
-		log.Infof("No public endpoints found for LB [%s], skipping endpoint update", lb.Name)
-		return epStr
+		return epStr, fmt.Errorf("no public endpoints found for LB [%s]", lb.Name)
 	}
 
 	for _, epObj := range eps {
@@ -271,13 +266,12 @@ func (lbp *LBProvider) GetPublicEndpoints(configName string) []string {
 
 		err = convertObject(epObj, &ep)
 		if err != nil {
-			log.Errorf("Faield to convert public endpoints for LB [%s], skipping endpoint update %v", lb.Name, err)
-			return epStr
+			return epStr, fmt.Errorf("failed to convert public endpoints for LB [%s]: [%v]", lb.Name, err)
 		}
 		epStr = append(epStr, ep.IPAddress)
 	}
 
-	return epStr
+	return epStr, nil
 }
 
 func convertObject(obj1 interface{}, obj2 interface{}) error {
@@ -299,7 +293,7 @@ func (lbp *LBProvider) getOrCreateSystemStack() (*client.Stack, error) {
 
 	envs, err := lbp.client.Stack.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", controllerStackName, err)
+		return nil, fmt.Errorf("couldn't get stack by name [%s]. Error: %#v", controllerStackName, err)
 	}
 
 	if len(envs.Data) >= 1 {
@@ -313,7 +307,7 @@ func (lbp *LBProvider) getOrCreateSystemStack() (*client.Stack, error) {
 
 	env, err = lbp.client.Stack.Create(env)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't create ingress controller stack [%s]. Error: %#v", controllerStackName, err)
+		return nil, fmt.Errorf("couldn't create ingress controller stack [%s]. Error: %#v", controllerStackName, err)
 	}
 	return env, nil
 }
@@ -326,7 +320,7 @@ func (lbp *LBProvider) getStack(name string) (*client.Stack, error) {
 
 	envs, err := lbp.client.Stack.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get stack by name [%s]. Error: %#v", name, err)
+		return nil, fmt.Errorf("couldn't get stack by name [%s]. Error: %#v", name, err)
 	}
 
 	if len(envs.Data) >= 1 {
@@ -344,7 +338,7 @@ func (lbp *LBProvider) createCertificate(cert *config.Certificate) (*client.Cert
 
 	rancherCert, err := lbp.client.Certificate.Create(rancherCert)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create certificate [%s]. Error: %#v", cert.Name, err)
+		return nil, fmt.Errorf("unable to create certificate [%s]. Error: %#v", cert.Name, err)
 	}
 	return rancherCert, nil
 }
@@ -372,7 +366,7 @@ func (lbp *LBProvider) getRancherLbConfig(lbConfig *config.LoadBalancerConfig, l
 				return nil, err
 			}
 			if svc == nil {
-				return nil, fmt.Errorf("Failed to find service [%s] in Rancher", bcknd.UUID)
+				return nil, fmt.Errorf("failed to find service [%s] in Rancher", bcknd.UUID)
 			}
 			portRule := client.PortRule{
 				ServiceId:  svc.Id,
@@ -453,7 +447,7 @@ func (lbp *LBProvider) updateRancherLBService(lbConfig *config.LoadBalancerConfi
 		toUpdate["lbConfig"] = updatedConfig
 		log.Infof("Updating Rancher LB with the new lbConfig [%s] ", updatedConfig)
 		if _, err = lbp.client.LoadBalancerService.Update(lb, toUpdate); err != nil {
-			return fmt.Errorf("Failed to update lb [%s]. Error: %#v", lb.Name, err)
+			return fmt.Errorf("failed to update lb [%s]. Error: %#v", lb.Name, err)
 		}
 	}
 
@@ -620,9 +614,9 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 		return lb, nil
 	}
 
-	log.Info("Creating lb service")
+	log.Infof("Creating lb service [%s]", lb)
 
-	lbPorts := []string{}
+	var lbPorts []string
 	for _, lbFrontend := range lbConfig.FrontendServices {
 		publicPort := strconv.Itoa(lbFrontend.Port)
 		privatePort := strconv.Itoa(lbFrontend.Port)
@@ -632,7 +626,7 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 	var imageUUID string
 	imageUUID, fetched := lbp.GetSetting("lb.instance.image")
 	if !fetched || imageUUID == "" {
-		return nil, fmt.Errorf("Failed to fetch lb.instance.image setting")
+		return nil, fmt.Errorf("failed to fetch lb.instance.image setting")
 	}
 	imageUUID = fmt.Sprintf("docker:%s", imageUUID)
 
@@ -677,7 +671,7 @@ func (lbp *LBProvider) createRancherLBService(lbConfig *config.LoadBalancerConfi
 
 	lb, err = lbp.client.LoadBalancerService.Create(lb)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create LB [%s]. Error: %#v", name, err)
+		return nil, fmt.Errorf("unable to create LB [%s]. Error: %#v", name, err)
 	}
 
 	return lbp.activateLBService(lb)
@@ -709,16 +703,16 @@ func (lbp *LBProvider) getRancherCertID(lbConfig *config.LoadBalancerConfig) (st
 	if defaultCert != nil {
 		rancherCert, err := lbp.getCertificate(defaultCert.Name)
 		if err != nil {
-			return "", fmt.Errorf("Failed to list certificate by name [%s]: %v", defaultCert.Name, err)
+			return "", fmt.Errorf("failed to list certificate by name [%s]: %v", defaultCert.Name, err)
 		}
 		if rancherCert == nil {
 			if defaultCert.Fetch {
-				return "", fmt.Errorf("Failed to fetch certificate by name [%s]", defaultCert.Name)
+				return "", fmt.Errorf("failed to fetch certificate by name [%s]", defaultCert.Name)
 			}
 			// create certificate
 			rancherCert, err = lbp.createCertificate(defaultCert)
 			if err != nil {
-				return "", fmt.Errorf("Failed to create certificate [%s]: %v", defaultCert.Name, err)
+				return "", fmt.Errorf("failed to create certificate [%s]: %v", defaultCert.Name, err)
 			}
 		}
 		rancherCertID = rancherCert.Id
@@ -733,7 +727,7 @@ func (lbp *LBProvider) getCertificate(certName string) (*client.Certificate, err
 
 	certs, err := lbp.client.Certificate.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get certificate by name [%s]. Error: %#v", certName, err)
+		return nil, fmt.Errorf("couldn't get certificate by name [%s]. Error: %#v", certName, err)
 	}
 
 	if len(certs.Data) >= 1 {
@@ -747,7 +741,7 @@ func (lbp *LBProvider) activateLBService(lb *client.LoadBalancerService) (*clien
 	actionChannel := lbp.waitForLBAction("activate", lb)
 	_, ok := <-actionChannel
 	if !ok {
-		return nil, fmt.Errorf("Couldn't call activate on LB [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
+		return nil, fmt.Errorf("couldn't call activate on LB [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
 	}
 	lb, err := lbp.reloadLBService(lb)
 	if err != nil {
@@ -755,14 +749,14 @@ func (lbp *LBProvider) activateLBService(lb *client.LoadBalancerService) (*clien
 	}
 	_, err = lbp.client.LoadBalancerService.ActionActivate(lb)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating LB [%s]. Couldn't activate LB. Error: %#v", lb.Name, err)
+		return nil, fmt.Errorf("error creating LB [%s]. Couldn't activate LB. Error: %#v", lb.Name, err)
 	}
 
 	// wait for state to become active
 	stateCh := lbp.waitForLBAction("deactivate", lb)
 	_, ok = <-stateCh
 	if !ok {
-		return nil, fmt.Errorf("Timed out waiting for LB to activate [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
+		return nil, fmt.Errorf("timed out waiting for LB to activate [%s]. LB state: [%s]. LB status: [%s]", lb.Name, lb.State, lb.TransitioningMessage)
 	}
 
 	// wait for LB public endpoints
@@ -773,7 +767,7 @@ func (lbp *LBProvider) activateLBService(lb *client.LoadBalancerService) (*clien
 	epChannel := lbp.waitForLBPublicEndpoints(1, lb)
 	_, ok = <-epChannel
 	if !ok {
-		return nil, fmt.Errorf("Couldn't get publicEndpoints for LB [%s]", lb.Name)
+		return nil, fmt.Errorf("couldn't get publicEndpoints for LB [%s]", lb.Name)
 	}
 
 	return lbp.reloadLBService(lb)
@@ -782,7 +776,7 @@ func (lbp *LBProvider) activateLBService(lb *client.LoadBalancerService) (*clien
 func (lbp *LBProvider) reloadLBService(lb *client.LoadBalancerService) (*client.LoadBalancerService, error) {
 	lb, err := lbp.client.LoadBalancerService.ById(lb.Id)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't reload LB [%s]. Error: %#v", lb.Name, err)
+		return nil, fmt.Errorf("couldn't reload LB [%s]. Error: %#v", lb.Name, err)
 	}
 	return lb, nil
 }
@@ -793,7 +787,7 @@ func (lbp *LBProvider) GetServiceLinks(lb *client.LoadBalancerService) ([]client
 	opts.Filters["serviceId"] = lb.Id
 	links, err := lbp.client.ServiceConsumeMap.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't fetch service links. Error: %#v", err)
+		return nil, fmt.Errorf("couldn't fetch service links. Error: %#v", err)
 	}
 
 	return links.Data, nil
@@ -809,7 +803,7 @@ func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) 
 	opts.Filters["stackId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get all lb services. Error: %#v", err)
+		return nil, fmt.Errorf("couldn't get all lb services. Error: %#v", err)
 	}
 
 	return lbs.Data, nil
@@ -827,7 +821,7 @@ func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerServ
 	opts.Filters["stackId"] = stack.Id
 	lbs, err := lbp.client.LoadBalancerService.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get LB service by name [%s]. Error: %#v", name, err)
+		return nil, fmt.Errorf("couldn't get LB service by name [%s]. Error: %#v", name, err)
 	}
 
 	if len(lbs.Data) == 0 {
@@ -843,7 +837,7 @@ func (lbp *LBProvider) getKubernetesServiceByUUID(UUID string) (*client.Kubernet
 	opts.Filters["removed_null"] = "1"
 	lbs, err := lbp.client.KubernetesService.List(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Coudln't get service by uuid [%s]. Error: %#v", UUID, err)
+		return nil, fmt.Errorf("couldn't get service by uuid [%s]. Error: %#v", UUID, err)
 	}
 
 	if len(lbs.Data) == 0 {

@@ -393,8 +393,8 @@ func (p *sProvider) GetName() string {
 	return ""
 }
 
-func (p *sProvider) GetPublicEndpoints(configName string) []string {
-	return []string{}
+func (p *sProvider) GetPublicEndpoints(configName string) ([]string, error) {
+	return []string{}, nil
 }
 
 func (p *sProvider) CleanupConfig(configName string) error {
