@@ -6,10 +6,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/leodotcloud/log"
-	logserver "github.com/leodotcloud/log/server"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
+	"github.com/rancher/log"
+	logserver "github.com/rancher/log/server"
 	"github.com/urfave/cli"
 )
 

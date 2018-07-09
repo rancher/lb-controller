@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/rancher/lb-controller/config"
-	//"github.com/leodotcloud/log"
+	//"github.com/rancher/log"
 )
 
 func GetDefaultConfig() map[string]map[string]string {

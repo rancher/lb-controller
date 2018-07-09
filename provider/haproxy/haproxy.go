@@ -14,11 +14,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/leodotcloud/log"
 	"github.com/mitchellh/go-ps"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
+	"github.com/rancher/log"
 )
 
 func init() {

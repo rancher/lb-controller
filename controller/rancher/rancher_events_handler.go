@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leodotcloud/log"
 	revents "github.com/rancher/event-subscriber/events"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/log"
 )
 
 type EventsHandler interface {
