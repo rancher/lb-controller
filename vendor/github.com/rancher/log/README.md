@@ -10,7 +10,7 @@ This package provides only the following:
 
 All other things are not supported. PRs are welcome!
 
-Example: https://github.com/leodotcloud/log-example
+Example: https://github.com/rancher/log-example
 
 
 ## Dynamically change loglevel
@@ -22,7 +22,7 @@ This repo has a package thats runs a http server over a unix socket, using which
 ### client
 
 There is also a client binary available that can be used to change the log level.
-https://github.com/leodotcloud/loglevel
+https://github.com/rancher/loglevel
 
 ```shell
 # To get the current log level

@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     software-properties-common && \
     rm -rf /var/lib/apt/lists && \
-    curl -sLf https://github.com/leodotcloud/loglevel/releases/download/v0.1/loglevel-amd64-v0.1.tar.gz | tar xvzf - -C /usr/bin
+    curl -sLf https://github.com/rancher/loglevel/releases/download/v0.1/loglevel-amd64-v0.1.tar.gz | tar xvzf - -C /usr/bin
 
 RUN add-apt-repository -y ppa:vbernat/haproxy-1.8 && apt-get update && apt-get install -y haproxy
 

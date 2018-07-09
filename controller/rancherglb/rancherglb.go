@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leodotcloud/log"
 	"github.com/patrickmn/go-cache"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
@@ -17,6 +16,7 @@ import (
 	"github.com/rancher/lb-controller/controller/rancher"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
+	"github.com/rancher/log"
 )
 
 func init() {

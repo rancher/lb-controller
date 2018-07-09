@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leodotcloud/log"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/log"
 )
 
 const (

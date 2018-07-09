@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leodotcloud/log"
 	"github.com/rancher/event-subscriber/locks"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
+	"github.com/rancher/log"
 )
 
 type PublicEndpoint struct {

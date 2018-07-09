@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/leodotcloud/log"
 	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/log"
 )
 
 var lbp Provider
