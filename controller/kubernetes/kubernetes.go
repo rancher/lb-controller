@@ -413,6 +413,9 @@ func (lbc *loadBalancerController) GetLBConfigs() ([]*config.LoadBalancerConfig,
 	}
 	for _, ingIf := range ings {
 		ing := ingIf.(*extensions.Ingress)
+		if ing.DeletionTimestamp != nil {
+			continue
+		}
 		if !isRancherIngress(ing) {
 			continue
 		}
