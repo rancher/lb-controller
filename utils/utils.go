@@ -48,6 +48,11 @@ func (t *TaskQueue) Enqueue(obj interface{}) {
 	}
 }
 
+// EnqueueByKey enqueues a given key to the task queue.
+func (t *TaskQueue) EnqueueByKey(key string) {
+	t.queue.Add(key)
+}
+
 func (t *TaskQueue) Requeue(key string, err error) {
 	log.Debugf("Requeuing %v, err %v", key, err)
 	t.queue.Add(key)
