@@ -13,12 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/rancher/lb-controller/config"
 	"github.com/rancher/lb-controller/controller"
 	"github.com/rancher/lb-controller/provider"
 	utils "github.com/rancher/lb-controller/utils"
 	"github.com/rancher/log"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -30,6 +32,10 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/watch"
+)
+
+const (
+	syncAll = "syncAll"
 )
 
 var (
@@ -151,8 +157,8 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(addIng, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
-			lbc.ingQueue.Enqueue(obj)
-			lbc.syncQueue.Enqueue(obj)
+			lbc.ingQueue.Enqueue(syncAll)
+			lbc.syncQueue.Enqueue(syncAll)
 		},
 		DeleteFunc: func(obj interface{}) {
 			upIng := obj.(*extensions.Ingress)
@@ -164,21 +170,21 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 				upIng := cur.(*extensions.Ingress)
 				lbc.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
 				lbc.ingQueue.Enqueue(cur)
-				lbc.syncQueue.Enqueue(cur)
+				lbc.syncQueue.Enqueue(syncAll)
 			}
 		},
 	}
 
 	eventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			lbc.syncQueue.Enqueue(obj)
+			lbc.syncQueue.Enqueue(syncAll)
 		},
 		DeleteFunc: func(obj interface{}) {
-			lbc.syncQueue.Enqueue(obj)
+			lbc.syncQueue.Enqueue(syncAll)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				lbc.syncQueue.Enqueue(cur)
+				lbc.syncQueue.Enqueue(syncAll)
 			}
 		},
 	}
@@ -209,7 +215,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 
 func (lbc *loadBalancerController) cleanupLB(key string) {
 	if err := lbc.lbProvider.CleanupConfig(key); err != nil {
-		lbc.syncQueue.Requeue(key, fmt.Errorf("failed to cleanup lb [%s]", key))
+		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("failed to cleanup lb [%s]", key))
 		return
 	}
 }
@@ -256,7 +262,7 @@ func (lbc *loadBalancerController) controllersInSync() bool {
 
 func (lbc *loadBalancerController) sync(key string) {
 	if !lbc.controllersInSync() {
-		lbc.syncQueue.Requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
+		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("deferring sync till endpoints controller has synced"))
 		return
 	}
 	requeue := false
@@ -264,14 +270,20 @@ func (lbc *loadBalancerController) sync(key string) {
 	if err != nil {
 		log.Errorf("Error forming LB Config from Ingress spec: %v", err)
 	}
+
+	var g errgroup.Group
 	for _, cfg := range cfgs {
-		if err := lbc.lbProvider.ApplyConfig(cfg); err != nil {
-			log.Errorf("Failed to apply lb config on provider: %v", err)
-			requeue = true
-		}
+		// execute commands in go routines
+		g.Go(func() error {
+			return lbc.lbProvider.ApplyConfig(cfg)
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		logrus.Errorf("failed to apply lb config on provider: %v", err)
 	}
 	if requeue {
-		lbc.syncQueue.Requeue(key, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
+		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
 	}
 }
 

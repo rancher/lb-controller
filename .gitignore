@@ -3,6 +3,7 @@
 /dist
 *.swp
 /.trash-cache
+/trash.lock
 lb-controller
 Dockerfile.dapper[1-9]*
 bin
