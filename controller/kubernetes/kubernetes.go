@@ -332,9 +332,13 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 		for _, IP := range toRemove {
 			if IP == lbStatus.IP {
 				log.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbStatus.IP)
+				if idx == len(currIng.Status.LoadBalancer.Ingress)-1 {
+					currIng.Status.LoadBalancer.Ingress = currIng.Status.LoadBalancer.Ingress[:idx]
+				} else {
+					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
+						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
+				}
 
-				currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
-					currIng.Status.LoadBalancer.Ingress[idx+1:]...)
 				if _, err := ingClient.UpdateStatus(currIng); err != nil {
 					lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
 					lbc.ingQueue.Requeue(key, err)
