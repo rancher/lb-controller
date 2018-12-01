@@ -169,7 +169,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			if !reflect.DeepEqual(old, cur) {
 				upIng := cur.(*extensions.Ingress)
 				lbc.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-				lbc.ingQueue.Enqueue(cur)
+				lbc.ingQueue.Enqueue(syncAll)
 				lbc.syncQueue.Enqueue(syncAll)
 			}
 		},
@@ -281,6 +281,7 @@ func (lbc *loadBalancerController) sync(key string) {
 
 	if err := g.Wait(); err != nil {
 		logrus.Errorf("failed to apply lb config on provider: %v", err)
+		requeue = true
 	}
 	if requeue {
 		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
