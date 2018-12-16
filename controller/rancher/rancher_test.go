@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"fmt"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
@@ -820,6 +821,10 @@ func (p *tProvider) IsHealthy() bool {
 
 func (p *tProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
+}
+
+func (p *tProvider) GetExistingConfigNames() (map[string]bool, error) {
+	return nil, fmt.Errorf("method is not implemented")
 }
 
 func TestSelectorNoMatch(t *testing.T) {

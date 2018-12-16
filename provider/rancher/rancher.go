@@ -235,6 +235,37 @@ func (lbp *LBProvider) IsEndpointDrained(ep *config.Endpoint) bool {
 func (lbp *LBProvider) RemoveEndpointFromDrain(ep *config.Endpoint) {
 }
 
+func (lbp *LBProvider) GetExistingConfigNames() (map[string]bool, error) {
+	stack, err := lbp.getOrCreateSystemStack()
+	if err != nil {
+		return nil, err
+	}
+
+	opts := client.NewListOpts()
+	opts.Filters["removed_null"] = "1"
+	opts.Filters["stackId"] = stack.Id
+	lbs, err := lbp.client.LoadBalancerService.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't list lb services. Error: %#v", err)
+	}
+
+	if len(lbs.Data) == 0 {
+		return nil, nil
+	}
+	configNames := map[string]bool{}
+	for _, lb := range lbs.Data {
+		var ingressName string
+		if strings.Contains(lb.Name, lbSvcNameSeparator) {
+			ingressName = strings.Replace(lb.Name, lbSvcNameSeparator, "/", -1)
+		} else {
+			ingressName = strings.Replace(lb.Name, "-", "/", -1)
+		}
+		configNames[ingressName] = true
+	}
+
+	return configNames, nil
+}
+
 func (lbp *LBProvider) GetPublicEndpoints(configName string) ([]string, error) {
 	var epStr []string
 	lb, err := lbp.getLBServiceForConfig(configName)

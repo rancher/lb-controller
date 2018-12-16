@@ -512,3 +512,7 @@ func (lbp *Provider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, cu
 func (lbp *Provider) CleanupConfig(name string) error {
 	return nil
 }
+
+func (lbp *Provider) GetExistingConfigNames() (map[string]bool, error) {
+	return nil, fmt.Errorf("method is not implemented")
+}

@@ -21,6 +21,7 @@ type LBProvider interface {
 	DrainEndpoint(*config.Endpoint) bool
 	IsEndpointDrained(*config.Endpoint) bool
 	RemoveEndpointFromDrain(ep *config.Endpoint)
+	GetExistingConfigNames() (map[string]bool, error)
 }
 
 var (

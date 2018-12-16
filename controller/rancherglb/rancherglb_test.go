@@ -1,6 +1,7 @@
 package rancherglb
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -596,4 +597,8 @@ func (p *tProvider) IsHealthy() bool {
 
 func (p *tProvider) ProcessCustomConfig(lbConfig *config.LoadBalancerConfig, customConfig string) error {
 	return nil
+}
+
+func (p *tProvider) GetExistingConfigNames() (map[string]bool, error) {
+	return nil, fmt.Errorf("method is not implemented")
 }
