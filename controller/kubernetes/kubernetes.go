@@ -41,7 +41,7 @@ const (
 var (
 	flags        = pflag.NewFlagSet("", pflag.ExitOnError)
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
-		`Relist and confirm cloud resources this often.`)
+		`Re-list and confirm cloud resources this often.`)
 )
 
 const (
@@ -114,7 +114,6 @@ type loadBalancerController struct {
 	recorder       record.EventRecorder
 	syncQueue      *utils.TaskQueue
 	ingQueue       *utils.TaskQueue
-	cleanupQueue   *utils.TaskQueue
 	stopLock       sync.Mutex
 	shutdown       bool
 	stopCh         chan struct{}
@@ -151,7 +150,6 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 
 	lbc.syncQueue = utils.NewTaskQueue(lbc.sync)
 	lbc.ingQueue = utils.NewTaskQueue(lbc.updateIngressStatus)
-	lbc.cleanupQueue = utils.NewTaskQueue(lbc.cleanupLB)
 
 	ingEventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -163,7 +161,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		DeleteFunc: func(obj interface{}) {
 			upIng := obj.(*extensions.Ingress)
 			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-			lbc.cleanupQueue.Enqueue(obj)
+			lbc.syncQueue.Enqueue(syncAll)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
@@ -213,13 +211,6 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 	return &lbc, nil
 }
 
-func (lbc *loadBalancerController) cleanupLB(key string) {
-	if err := lbc.lbProvider.CleanupConfig(key); err != nil {
-		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("failed to cleanup lb [%s]", key))
-		return
-	}
-}
-
 func ingressListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
 	return func(opts api.ListOptions) (runtime.Object, error) {
 		return c.Extensions().Ingress(ns).List(opts)
@@ -265,14 +256,18 @@ func (lbc *loadBalancerController) sync(key string) {
 		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("deferring sync till endpoints controller has synced"))
 		return
 	}
+
+	// 1) apply new configs
 	requeue := false
-	cfgs, err := lbc.GetLBConfigs()
+	toApply, err := lbc.GetLBConfigs()
 	if err != nil {
 		log.Errorf("Error forming LB Config from Ingress spec: %v", err)
+		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as config fetching failed"))
+		return
 	}
 
 	var g errgroup.Group
-	for _, cfg := range cfgs {
+	for _, cfg := range toApply {
 		// execute commands in go routines
 		g.Go(func() error {
 			return lbc.lbProvider.ApplyConfig(cfg)
@@ -285,7 +280,53 @@ func (lbc *loadBalancerController) sync(key string) {
 	}
 	if requeue {
 		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
+		return
 	}
+	// 2) remove obsolete configs
+	toCleanup, err := lbc.getConfigsToCleanup()
+	if err != nil {
+		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as failed to get configs to cleanup from provider %v", err))
+		return
+	}
+	for _, cfg := range toCleanup {
+		// execute commands in go routines
+		g.Go(func() error {
+			return lbc.lbProvider.CleanupConfig(cfg)
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		logrus.Errorf("failed to cleanup lb config on provider: %v", err)
+		requeue = true
+	}
+	if requeue {
+		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as one of the configs failed to cleanup on a backend"))
+		return
+	}
+}
+
+func (lbc *loadBalancerController) getConfigsToCleanup() ([]string, error) {
+	ings := lbc.ingLister.Store.List()
+	controllerIng := map[string]bool{}
+	for _, ingObj := range ings {
+		ing := ingObj.(*extensions.Ingress)
+		if ing.DeletionTimestamp == nil {
+			controllerIng[fmt.Sprintf("%s/%s", ing.Namespace, ing.Name)] = true
+		}
+	}
+
+	providerIng, err := lbc.lbProvider.GetExistingConfigNames()
+	if err != nil {
+		return nil, err
+	}
+
+	var toCleanup []string
+	for key := range providerIng {
+		if _, ok := controllerIng[key]; !ok {
+			toCleanup = append(toCleanup, key)
+		}
+	}
+	return toCleanup, nil
 }
 
 func (lbc *loadBalancerController) updateIngressStatus(key string) {
@@ -413,7 +454,6 @@ func (lbc *loadBalancerController) Run(provider provider.LBProvider) {
 
 	go lbc.syncQueue.Run(time.Second, lbc.stopCh)
 	go lbc.ingQueue.Run(time.Second, lbc.stopCh)
-	go lbc.cleanupQueue.Run(time.Second, lbc.stopCh)
 
 	lbc.lbProvider = provider
 	go lbc.lbProvider.Run(utils.NewTaskQueue(lbc.updateIngressStatus))
@@ -805,7 +845,6 @@ func (lbc *loadBalancerController) Stop() error {
 		lbc.shutdown = true
 		lbc.syncQueue.Shutdown()
 		lbc.ingQueue.Shutdown()
-		lbc.cleanupQueue.Shutdown()
 		log.Infof("shut down controller queues")
 		return nil
 	}

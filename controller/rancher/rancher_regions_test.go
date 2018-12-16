@@ -2,6 +2,7 @@ package rancher
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -429,4 +430,8 @@ func (p *sProvider) IsEndpointDrained(ep *config.Endpoint) bool {
 }
 
 func (p *sProvider) RemoveEndpointFromDrain(ep *config.Endpoint) {
+}
+
+func (p *sProvider) GetExistingConfigNames() (map[string]bool, error) {
+	return nil, fmt.Errorf("method is not implemented")
 }
