@@ -20,7 +20,6 @@ import (
 	utils "github.com/rancher/lb-controller/utils"
 	"github.com/rancher/log"
 	"github.com/spf13/pflag"
-	"golang.org/x/sync/errgroup"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -266,18 +265,13 @@ func (lbc *loadBalancerController) sync(key string) {
 		return
 	}
 
-	var g errgroup.Group
 	for _, cfg := range toApply {
-		// execute commands in go routines
-		g.Go(func() error {
-			return lbc.lbProvider.ApplyConfig(cfg)
-		})
+		if err = lbc.lbProvider.ApplyConfig(cfg); err != nil {
+			logrus.Errorf("failed to apply lb config on provider: %v", err)
+			requeue = true
+		}
 	}
 
-	if err := g.Wait(); err != nil {
-		logrus.Errorf("failed to apply lb config on provider: %v", err)
-		requeue = true
-	}
 	if requeue {
 		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as one of the configs failed to apply on a backend"))
 		return
@@ -289,16 +283,12 @@ func (lbc *loadBalancerController) sync(key string) {
 		return
 	}
 	for _, cfg := range toCleanup {
-		// execute commands in go routines
-		g.Go(func() error {
-			return lbc.lbProvider.CleanupConfig(cfg)
-		})
+		if err = lbc.lbProvider.CleanupConfig(cfg); err != nil {
+			logrus.Errorf("failed to cleanup lb config on provider: %v", err)
+			requeue = true
+		}
 	}
 
-	if err := g.Wait(); err != nil {
-		logrus.Errorf("failed to cleanup lb config on provider: %v", err)
-		requeue = true
-	}
 	if requeue {
 		lbc.syncQueue.Requeue(syncAll, fmt.Errorf("retrying sync as one of the configs failed to cleanup on a backend"))
 		return
