@@ -355,75 +355,36 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 		lbc.ingQueue.Requeue(key, err)
 		return
 	}
-	toAdd, toRemove := lbc.getIPsToAddRemove(lbIPs, publicEndpoints)
-	// add missing
-	for _, IP := range toAdd {
-		log.Infof("Updating ingress %v/%v with IP %v", ing.Namespace, ing.Name, IP)
-		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
-			IP: IP,
-		})
+
+	updateNeeded := lbc.updateNeeded(lbIPs, publicEndpoints)
+	if updateNeeded {
+		log.Infof("Updating ingress %v/%v with endpoints %v", ing.Namespace, ing.Name, publicEndpoints)
+		var lbIngress []api.LoadBalancerIngress
+		for _, IP := range publicEndpoints {
+			lbIngress = append(lbIngress, api.LoadBalancerIngress{
+				IP: IP,
+			})
+		}
+		currIng.Status.LoadBalancer.Ingress = lbIngress
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
 			lbc.ingQueue.Requeue(key, err)
 			return
 		}
-
-		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", IP)
-	}
-
-	// remove extra ips
-	for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
-		for _, IP := range toRemove {
-			if IP == lbStatus.IP {
-				log.Infof("Updating ingress %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbStatus.IP)
-				if idx == len(currIng.Status.LoadBalancer.Ingress)-1 {
-					currIng.Status.LoadBalancer.Ingress = currIng.Status.LoadBalancer.Ingress[:idx]
-				} else {
-					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
-						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
-				}
-
-				if _, err := ingClient.UpdateStatus(currIng); err != nil {
-					lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
-					lbc.ingQueue.Requeue(key, err)
-					break
-				}
-				lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbStatus.IP)
-				break
-			}
-		}
 	}
 }
 
-func (lbc *loadBalancerController) getIPsToAddRemove(ingressIPs []api.LoadBalancerIngress, IPs []string) ([]string, []string) {
-	var add []string
-	var remove []string
-	//find entries to remove
-	for _, ingressIP := range ingressIPs {
-		found := false
-		for _, IP := range IPs {
-			if ingressIP.IP == IP {
-				found = true
-				break
-			}
-		}
-		if !found {
-			remove = append(remove, ingressIP.IP)
-		}
-	}
-	// find entries to add
+func (lbc *loadBalancerController) updateNeeded(ingressIPs []api.LoadBalancerIngress, IPs []string) bool {
+	IPMap := map[string]bool{}
+	ingressIPMap := map[string]bool{}
 	for _, IP := range IPs {
-		found := false
-		for _, lbing := range ingressIPs {
-			if lbing.IP == IP {
-				found = true
-			}
-		}
-		if !found {
-			add = append(add, IP)
-		}
+		IPMap[IP] = true
 	}
-	return add, remove
+
+	for _, ingressIP := range ingressIPs {
+		ingressIPMap[ingressIP.IP] = true
+	}
+	return !reflect.DeepEqual(IPMap, ingressIPMap)
 }
 
 func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress, IP string) bool {
