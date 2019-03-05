@@ -249,11 +249,24 @@ func (lbp *LBProvider) GetExistingConfigNames() (map[string]bool, error) {
 		return nil, fmt.Errorf("couldn't list lb services. Error: %#v", err)
 	}
 
-	if len(lbs.Data) == 0 {
+	var allLBs []client.LoadBalancerService
+	allLBs = append(allLBs, lbs.Data...)
+
+	isPartial := lbs.Pagination.Partial
+	for isPartial {
+		newlbs, err := lbs.Next()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get Next set of lb services with error: %v", err)
+		}
+		allLBs = append(allLBs, newlbs.Data...)
+		isPartial = newlbs.Pagination.Partial
+	}
+
+	if len(allLBs) == 0 {
 		return nil, nil
 	}
 	configNames := map[string]bool{}
-	for _, lb := range lbs.Data {
+	for _, lb := range allLBs {
 		var ingressName string
 		if strings.Contains(lb.Name, lbSvcNameSeparator) {
 			ingressName = strings.Replace(lb.Name, lbSvcNameSeparator, "/", -1)
