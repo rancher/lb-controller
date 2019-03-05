@@ -240,31 +240,15 @@ func (lbp *LBProvider) GetExistingConfigNames() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	opts := client.NewListOpts()
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["stackId"] = stack.Id
-	lbs, err := lbp.client.LoadBalancerService.List(opts)
+
+	allLBs, err := GetLBServiceInternal(lbp.client, opts)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't list lb services. Error: %#v", err)
+		return nil, err
 	}
 
-	var allLBs []client.LoadBalancerService
-	allLBs = append(allLBs, lbs.Data...)
-
-	isPartial := lbs.Pagination.Partial
-	for isPartial {
-		newlbs, err := lbs.Next()
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get Next set of lb services with error: %v", err)
-		}
-		allLBs = append(allLBs, newlbs.Data...)
-		isPartial = newlbs.Pagination.Partial
-	}
-
-	if len(allLBs) == 0 {
-		return nil, nil
-	}
 	configNames := map[string]bool{}
 	for _, lb := range allLBs {
 		var ingressName string
@@ -277,6 +261,28 @@ func (lbp *LBProvider) GetExistingConfigNames() (map[string]bool, error) {
 	}
 
 	return configNames, nil
+}
+
+func GetLBServiceInternal(rancherClient *client.RancherClient, opts *client.ListOpts) ([]client.LoadBalancerService, error) {
+	lbs, err := rancherClient.LoadBalancerService.List(opts)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't list lb services. Error: %#v", err)
+	}
+
+	var allLBs []client.LoadBalancerService
+	allLBs = append(allLBs, lbs.Data...)
+
+	isPartial := lbs.Pagination.Partial
+	for isPartial {
+		newLBs, err := lbs.Next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Next set of lb services with error: %v", err)
+		}
+		allLBs = append(allLBs, newLBs.Data...)
+		isPartial = newLBs.Pagination.Partial
+	}
+
+	return allLBs, nil
 }
 
 func (lbp *LBProvider) GetPublicEndpoints(configName string) ([]string, error) {
@@ -845,12 +851,12 @@ func (lbp *LBProvider) getAllLBServices() ([]client.LoadBalancerService, error) 
 	opts := client.NewListOpts()
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["stackId"] = stack.Id
-	lbs, err := lbp.client.LoadBalancerService.List(opts)
+	lbs, err := GetLBServiceInternal(lbp.client, opts)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get all lb services. Error: %#v", err)
 	}
 
-	return lbs.Data, nil
+	return lbs, nil
 }
 
 func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerService, error) {
@@ -863,16 +869,16 @@ func (lbp *LBProvider) getLBServiceByName(name string) (*client.LoadBalancerServ
 	opts.Filters["name"] = name
 	opts.Filters["removed_null"] = "1"
 	opts.Filters["stackId"] = stack.Id
-	lbs, err := lbp.client.LoadBalancerService.List(opts)
+	lbs, err := GetLBServiceInternal(lbp.client, opts)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get LB service by name [%s]. Error: %#v", name, err)
 	}
 
-	if len(lbs.Data) == 0 {
+	if len(lbs) == 0 {
 		return nil, nil
 	}
 
-	return &lbs.Data[0], nil
+	return &lbs[0], nil
 }
 
 func (lbp *LBProvider) getKubernetesServiceByUUID(UUID string) (*client.KubernetesService, error) {

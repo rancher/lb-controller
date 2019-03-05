@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
+	"github.com/rancher/lb-controller/provider/rancher"
 	"github.com/rancher/log"
 )
 
@@ -67,7 +68,7 @@ func (fetcher *RCertificateFetcher) setInitPollDone() {
 
 func (fetcher *RCertificateFetcher) FetchCertificates(lbMeta *LBMetadata, isDefaultCert bool) ([]*config.Certificate, error) {
 	// fetch certificates either from mounted certDir or from cattle
-	certs := []*config.Certificate{}
+	var certs []*config.Certificate
 	var defaultCert *config.Certificate
 
 	if fetcher.CertDir != "" || fetcher.DefaultCertDir != "" {
@@ -150,27 +151,27 @@ func (fetcher *RCertificateFetcher) UpdateEndpoints(lbSvc *metadata.Service, eps
 	opts := client.NewListOpts()
 	opts.Filters["uuid"] = lbSvc.UUID
 	opts.Filters["removed_null"] = "1"
-	lbs, err := fetcher.Client.LoadBalancerService.List(opts)
+	lbs, err := rancher.GetLBServiceInternal(fetcher.Client, opts)
 	if err != nil {
-		return fmt.Errorf("Coudln't get LB service by uuid [%s]. Error: %#v", lbSvc.UUID, err)
+		return fmt.Errorf("could not get LB service by uuid [%s]. Error: %#v", lbSvc.UUID, err)
 	}
-	if len(lbs.Data) == 0 {
+	if len(lbs) == 0 {
 		log.Infof("Failed to find lb by uuid %s", lbSvc.UUID)
 		return nil
 	}
-	lb := lbs.Data[0]
+	lb := lbs[0]
 
 	toUpdate := make(map[string]interface{})
 	toUpdate["publicEndpoints"] = eps
 	log.Infof("Updating Rancher LB [%s] in stack [%s] with the new public endpoints [%v] ", lbSvc.Name, lbSvc.StackName, eps)
 	if _, err := fetcher.Client.LoadBalancerService.Update(&lb, toUpdate); err != nil {
-		return fmt.Errorf("Failed to update Rancher LB [%s] in stack [%s]. Error: %#v", lbSvc.Name, lbSvc.StackName, err)
+		return fmt.Errorf("failed to update Rancher LB [%s] in stack [%s]. Error: %#v", lbSvc.Name, lbSvc.StackName, err)
 	}
 	return nil
 }
 
 func (fetcher *RCertificateFetcher) ReadAllCertificatesFromDir(certDir string) []*config.Certificate {
-	certs := []*config.Certificate{}
+	var certs []*config.Certificate
 
 	fetcher.mu.RLock()
 	for _, value := range fetcher.CertsCache {
@@ -192,7 +193,6 @@ func (fetcher *RCertificateFetcher) ReadDefaultCertificate(defaultCertDir string
 }
 
 func (fetcher *RCertificateFetcher) LookForCertUpdates(doOnUpdate func(string)) {
-
 	if fetcher.CertDir != "" || fetcher.DefaultCertDir != "" {
 		lastUpdated := time.Now()
 		for {
