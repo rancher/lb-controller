@@ -502,13 +502,14 @@ func (lbc *LoadBalancerController) CollectLBMetadata(lbSvc metadata.Service) (*L
 		return nil, err
 	}
 
-	if err = lbc.processSelector(lbMeta); err != nil {
+	skipTargetLBRoutingRules := strings.EqualFold(lbSvc.Labels["io.rancher.lb_service.skip_target_lb_rules"], "true")
+	if err = lbc.processSelector(lbMeta, skipTargetLBRoutingRules); err != nil {
 		return nil, err
 	}
 	return lbMeta, nil
 }
 
-func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
+func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata, skipTargetLBRoutingRules bool) error {
 	//collect selector based services
 	var rules []metadata.PortRule
 	localsvcs, err := lbc.MetaFetcher.GetServices()
@@ -553,12 +554,14 @@ func (lbc *LoadBalancerController) processSelector(lbMeta *LBMetadata) error {
 					port := metadata.PortRule{
 						SourcePort:  lbRule.SourcePort,
 						Protocol:    lbRule.Protocol,
-						Path:        rule.Path,
-						Hostname:    rule.Hostname,
 						Service:     svcName,
 						TargetPort:  rule.TargetPort,
 						BackendName: rule.BackendName,
 						Weight:      lbRule.Weight,
+					}
+					if !(skipTargetLBRoutingRules && strings.EqualFold(svc.Kind, "loadBalancerService")) {
+						port.Hostname = rule.Hostname
+						port.Path = rule.Path
 					}
 					rules = append(rules, port)
 				}

@@ -61,7 +61,7 @@ func TestSelectorMatch1(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	lbc1.processSelector(meta)
+	lbc1.processSelector(meta, false)
 
 	configs, _ := lbc1.BuildConfigFromMetadata("test", "", "", "any", meta)
 

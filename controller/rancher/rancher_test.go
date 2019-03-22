@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"fmt"
+
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/lb-controller/config"
@@ -839,7 +840,7 @@ func TestSelectorNoMatch(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	lbc.processSelector(meta)
+	lbc.processSelector(meta, false)
 
 	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
@@ -860,7 +861,7 @@ func TestSelectorMatch(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	lbc.processSelector(meta)
+	lbc.processSelector(meta, false)
 
 	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
@@ -911,7 +912,7 @@ func TestSelectorMatchNoTargetPort(t *testing.T) {
 		PortRules: portRules,
 	}
 
-	lbc.processSelector(meta)
+	lbc.processSelector(meta, false)
 
 	configs, _ := lbc.BuildConfigFromMetadata("test", "", "", "any", meta)
 
