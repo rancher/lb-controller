@@ -1,10 +1,24 @@
 ---
-pipeline:
-  build:
-    privileged: true
-    image: rancher/dind:v1.10.0-rancher1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    commands:
-      - wrapdocker
-      - make ci
+kind: pipeline
+name: default
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: build
+  pull: default
+  image: rancher/dind:v1.10.0-rancher1
+  commands:
+  - wrapdocker
+  - make ci
+  privileged: true
+  volumes:
+  - name: socket
+    path: /var/run/docker.sock
+
+volumes:
+- name: socket
+  host:
+    path: /var/run/docker.sock
