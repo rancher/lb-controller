@@ -1,7 +1,9 @@
 FROM ubuntu:16.04
 ADD http://stedolan.github.io/jq/download/linux64/jq /usr/bin/
 RUN chmod +x /usr/bin/jq
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y \
     curl \
     tcpdump \
     vim-tiny \
