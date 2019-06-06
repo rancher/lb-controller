@@ -1,7 +1,9 @@
 FROM rancher/agent-base:v0.3.0
 
 MAINTAINER Rancher Labs, Inc.
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y \
     wget \
     ca-certificates \
     openssl \
