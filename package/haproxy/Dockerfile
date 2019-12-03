@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     rsyslog \
     wget \
-    haproxy \
+    haproxy=2.0.9-1ppa1~xenial \
     software-properties-common && \
     rm -rf /var/lib/apt/lists
 
