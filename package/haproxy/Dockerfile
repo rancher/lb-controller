@@ -15,7 +15,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists && \
     curl -sLf https://github.com/rancher/loglevel/releases/download/v0.1/loglevel-amd64-v0.1.tar.gz | tar xvzf - -C /usr/bin
 
-RUN add-apt-repository -y ppa:vbernat/haproxy-2.1 && apt-get update && apt-get install -y haproxy
+RUN add-apt-repository -y ppa:vbernat/haproxy-2.4 && apt-get update && apt-get install -y haproxy
 
 RUN mkdir -p /etc/haproxy/
 
